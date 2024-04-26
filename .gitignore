@@ -1,0 +1,51 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+*.sqlite
+
+# Buildfiles
+/out*
+/CMakeSettings.json
+/build*
+/docs/sphinx/build*
+/docs/sphinx/api*
+/docs/sphinx/Doxyfile
+/validation/data/dens.bin
+/validation/data/mat.bin
+/validation/data/mat.txt
+
+# Editors
+/.vs*
+/.vscode
+
+/thirdparty/out*
+/validation/data/case5world.bin
