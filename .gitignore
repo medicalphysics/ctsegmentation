@@ -49,3 +49,4 @@
 
 /thirdparty/out*
 /validation/data/case5world.bin
+data/utilities/__pycache__/*
