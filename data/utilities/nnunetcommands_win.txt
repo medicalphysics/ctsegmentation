@@ -1,0 +1,9 @@
+set nnUNet_raw=C:\Users\ander\totseg\nnUNet_raw
+set nnUNet_preprocessed=C:\Users\ander\totseg\nnUNet_preprocessed
+set nnUNet_results=C:\Users\ander\totseg\nnUNet_results
+
+nnUnetv2_plan_and_preprocess -d 1 -pl nnUNetPlannerResEncMPlans
+
+nnUNetv2_extract_fingerprint -d 1
+nnUNetv2_plan_experiment -d 1 -pl nnUNetPlannerResEncM
+nnUNetv2_train 1 2d FOLD
