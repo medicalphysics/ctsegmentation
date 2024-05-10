@@ -9,7 +9,7 @@ import pandas as pd
 
 from matplotlib import pylab as plt
 
-from segmentation_volumes import VOLUMES
+from data.segmentation_volumes import VOLUMES
 
 TOTSEG_FOLDERPATH = r"C:\Users\ander\totseg\Totalsegmentator_dataset_v201"
 NNUNET_FOLDERPATH = r"C:\Users\ander\totseg\nnUNet_raw\Dataset001_DXMC"
