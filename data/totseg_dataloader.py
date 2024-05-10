@@ -22,7 +22,7 @@ class CustomImageDataset(Dataset):
         """Make labels array"""
         print("Making labels arrays")
         def load_labels(path, overwrite=False):
-            if not os.path.exists(os.path.join(path, "labels.nii.gz")) or overwrite:
+            if not os.path.exists(os.path.join(path, "labels.nii.gz")):
                 ct = nibabel.load(os.path.join(path, "ct.nii.gz"))
                 labels = np.zeros(ct.shape, dtype=np.float32)
                 for key, name in tqdm(VOLUMES.items(), leave=False):
@@ -31,10 +31,12 @@ class CustomImageDataset(Dataset):
                 nibabel.save(nibabel.Nifti1Image(labels, ct.affine), os.path.join(path, "labels.nii.gz")) 
 
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:            
-            futures = [executor.submit(load_labels, p, overwrite) for p in self._item_paths]
-            for _ in tqdm(concurrent.futures.as_completed(futures)):
-                pass        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:                        
+            pbar = tqdm(total=len(self._item_paths))
+            futures = list([executor.submit(load_labels, p, overwrite) for p in self._item_paths])
+            for _ in concurrent.futures.as_completed(futures):
+                pbar.update(1)
+            pbar.close()
 
     def __len__(self):
         return len(self._item_paths)
