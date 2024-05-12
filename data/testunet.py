@@ -105,7 +105,7 @@ class dummy_context(object):
 def train(model, loss, optimizer, batch, device='cuda'):
 ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
 
-    model.train()
+    model.train(True)
     data = batch['data']
     target = batch['target']
 
@@ -148,11 +148,12 @@ def start_train():
 
 if __name__=='__main__':
 
-    data = torch.rand((1, 1, 8, 256, 256))
+    data = torch.rand((1, 1, 128, 128, 128))
 
-    punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 4,
-                                (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
+    punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
+                             (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
     print(punet.compute_conv_feature_map_size(data.shape[2:]))
+    """    
     runet = ResidualUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 4,
                                 (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
@@ -161,16 +162,19 @@ if __name__=='__main__':
     runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 4,
                                 (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
-    runet.train()
+    """
+    punet.eval()
+    with torch.no_grad():
+        ans = punet.forward(data)
 
     ## test trace
-    traced = torch.jit.trace(runet, data)
-    print(traced)
-    traced.save(r"c:/Users/ander/source/ctsegmentation/data/models/test.pt")
+    #traced = torch.jit.trace(runet, data)
+   # print(traced)
+    #traced.save(r"c:/Users/ander/source/ctsegmentation/data/models/test.pt")
 
     #print(runet)
 
     #g = hl.build_graph(runet, data, transforms=None)
     #g.save("network_architecture.pdf")
-
+    import pdb;pdb.set_trace()
     print("test")

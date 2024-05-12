@@ -10,13 +10,17 @@ import nibabel
 from matplotlib import pylab as plt
 
 class CustomImageDataset(Dataset):
-    def __init__(self, data_dir: str):  
+    def __init__(self, data_dir: str, n_labels=None):  
         self._train_shape = (128, 128, 128)        
         patients = os.listdir(data_dir)
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
-        self._item_splits = self._calculate_data_splits()
-        
-#        self.prepare_labels()
+        self._item_splits = self._calculate_data_splits()        
+        if n_labels is None:
+            self.prepare_labels()
+            self._n_labels = self._find_max_label()
+        else: 
+            self_n_labels = n_labels
+        self.prepare_labels()
    
     def _calculate_data_splits(self):        
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
@@ -60,9 +64,15 @@ class CustomImageDataset(Dataset):
                 pbar.update(1)
             pbar.close()
 
+
+    def _find_max_label()
+
     def __len__(self):
         return len(self._item_splits)
      
+    def __iter__(self):
+        for i in range(len(self._item_splits)):
+            yield self.__getitem__(i)
 
     def __getitem__(self, idx):
         pat, split = self._item_splits[idx]
@@ -71,21 +81,32 @@ class CustomImageDataset(Dataset):
         self.load_labels(self._item_paths[pat], True)
         label = nibabel.load(os.path.join(self._item_paths[pat], "labels.nii.gz"))        
         print(self._item_paths[pat], image.header.get_zooms(), image.shape)
-
-
         
-        return torch.as_tensor(image.get_fdata()), torch.as_tensor(label.get_fdata())
+        beg = tuple((s*i for s, i in zip(self._train_shape, split)))
+        end = tuple((s+i for s, i in zip(beg, self._train_shape)))
+        sh = image.shape
+        if end[0] > sh[0] or end[1] > sh[1] or end[2] > sh[2]:
+            end_p = tuple((min(s, e) for e, s in zip(end, sh)))
+            pads = tuple(((0, e-s) for e,s in zip(end, end_p)))
+            image_part = np.pad(image.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=-1024)            
+            label_part = np.pad(label.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=0)                        
+        else:
+            image_part = image.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata()
+            label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata()
+        
+        return torch.as_tensor(image_part), torch.as_tensor(label_part)
+        
+        
+        
 
 
 if __name__ == '__main__':
     d = CustomImageDataset(r"/home/erlend/Totalsegmentator_dataset_v201")
-    for i in range(len(d)):
-        print(d._item_splits[i])
-
-    """for image, label in d:
+    print(len(d))
+    for image, label in d:         
         plt.subplot(1, 2, 1)
         plt.imshow(image[:,:,image.shape[2]//2], cmap='bone')
         plt.subplot(1, 2, 2)
         plt.imshow(label[:,:,image.shape[2]//2])
         plt.show()
-       """ 
+    
