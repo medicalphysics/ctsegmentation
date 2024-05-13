@@ -1,8 +1,11 @@
-set nnUNet_raw=C:\Users\ander\totseg\nnUNet_raw
-set nnUNet_preprocessed=C:\Users\ander\totseg\nnUNet_preprocessed
-set nnUNet_results=C:\Users\ander\totseg\nnUNet_results
+set nnUNet_raw=D:\totseg\nnunet_raw
+set nnUNet_preprocessed=D:\totseg\nnunet_preprocessed
+set nnUNet_results=D:\totseg\nnunet_results
 
-nnUnetv2_plan_and_preprocess -d 1 -pl nnUNetPlannerResEncMPlans
+nnUnetv2_plan_and_preprocess -d 1 -c 3d_fullres -pl nnUNetPlannerResEncM -np 8
+
+nnUNetv2_train 1 3d_fullres 0 -tr nnUNetTrainerNoMirroring -p nnUNetResEncUNetMPlans
+
 
 nnUNetv2_extract_fingerprint -d 1
 nnUNetv2_plan_experiment -d 1 -pl nnUNetPlannerResEncM
