@@ -19,8 +19,8 @@ class CustomImageDataset(Dataset):
             self.prepare_labels()
             self._n_labels = self._find_max_label()
         else: 
-            self_n_labels = n_labels
-        self.prepare_labels()
+            self._n_labels = n_labels
+        
    
     def _calculate_data_splits(self):        
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
@@ -35,7 +35,7 @@ class CustomImageDataset(Dataset):
         return data
 
 
-    def load_labels(self, path, overwrite=False):
+    def _load_labels(self, path, overwrite=False):
         label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))
         if label_exists and overwrite:
             try:
@@ -50,7 +50,7 @@ class CustomImageDataset(Dataset):
             labels = np.zeros(ct.shape, dtype=np.float32)
             for key, name in tqdm(VOLUMES.items(), leave=False):
                 lpart = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata()
-                labels[lpart > 0] = key
+                labels[lpart.nonzero()] = key
             nibabel.save(nibabel.Nifti1Image(labels, ct.affine), os.path.join(path, "labels.nii.gz")) 
 
     def prepare_labels(self, overwrite=False):
@@ -59,13 +59,25 @@ class CustomImageDataset(Dataset):
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()-2) as executor:                        
             pbar = tqdm(total=len(self._item_paths))
-            futures = list([executor.submit(self.load_labels, p, overwrite) for p in self._item_paths])
+            futures = list([executor.submit(self._load_labels, p, overwrite) for p in self._item_paths])
             for _ in concurrent.futures.as_completed(futures):
                 pbar.update(1)
             pbar.close()
 
 
-    def _find_max_label()
+    def _find_max_label(self):
+        paths = list([os.path.join(p, 'labels.nii.gz') for p in self._item_paths])
+        def get_max(path):
+            return nibabel.load(path).get_fdata().max()
+        gmax = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()-2) as executor:
+            pbar = tqdm(total=len(paths))
+            futures = list([executor.submit(get_max, p,) for p in paths])
+            for max in concurrent.futures.as_completed(futures):
+                gmax = max(max, gmax)
+                pbar.update(1)
+            pbar.close()
+        return gmax
 
     def __len__(self):
         return len(self._item_splits)
@@ -78,9 +90,8 @@ class CustomImageDataset(Dataset):
         pat, split = self._item_splits[idx]
 
         image = nibabel.load(os.path.join(self._item_paths[pat], "ct.nii.gz"))
-        self.load_labels(self._item_paths[pat], True)
-        label = nibabel.load(os.path.join(self._item_paths[pat], "labels.nii.gz"))        
-        print(self._item_paths[pat], image.header.get_zooms(), image.shape)
+        self._load_labels(self._item_paths[pat], True)
+        label = nibabel.load(os.path.join(self._item_paths[pat], "labels.nii.gz"))                
         
         beg = tuple((s*i for s, i in zip(self._train_shape, split)))
         end = tuple((s+i for s, i in zip(beg, self._train_shape)))
@@ -101,7 +112,8 @@ class CustomImageDataset(Dataset):
 
 
 if __name__ == '__main__':
-    d = CustomImageDataset(r"/home/erlend/Totalsegmentator_dataset_v201")
+    d = CustomImageDataset(r"C:\Users\ander\totseg", n_labels=118)
+    d.prepare_labels(True)
     print(len(d))
     for image, label in d:         
         plt.subplot(1, 2, 1)
