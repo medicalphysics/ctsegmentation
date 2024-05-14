@@ -3,7 +3,8 @@ import torch.distributed
 from torch import nn, autocast
 
 from dynamic_network_architectures.architectures.unet import PlainConvUNet, ResidualUNet
-import hiddenlayer as hl
+
+from matplotlib import pylab as plt
 
 from typing import Any, Optional, Tuple, Callable
 
@@ -138,6 +139,7 @@ def start_train():
     optimizer = torch.optim.SGD(runet.parameters(), learning_rate, weight_decay=learning_decay,
                                     momentum=0.99, nesterov=True)
     loss = MemoryEfficientSoftDiceLoss()
+    
 
 
 
@@ -148,25 +150,30 @@ def start_train():
 
 if __name__=='__main__':
 
-    data = torch.rand((1, 1, 128, 128, 128))
+    data = torch.rand((4, 1, 128, 128, 128))
 
     punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
                              (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
     print(punet.compute_conv_feature_map_size(data.shape[2:]))
-    """    
-    runet = ResidualUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 4,
+   
+    runet = ResidualUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
                                 (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
 
 
-    runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 4,
+    runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
                                 (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
-    """
+    
+
     punet.eval()
     with torch.no_grad():
         ans = punet.forward(data)
 
+
+    plt.imshow(ans[0][0,0,:,:,63])
+
+    plt.show()
     ## test trace
     #traced = torch.jit.trace(runet, data)
    # print(traced)
@@ -176,5 +183,4 @@ if __name__=='__main__':
 
     #g = hl.build_graph(runet, data, transforms=None)
     #g.save("network_architecture.pdf")
-    import pdb;pdb.set_trace()
-    print("test")
+    
