@@ -133,7 +133,7 @@ class CustomImageDataset(Dataset):
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = CustomImageDataset(r"C:\Users\ander\totseg", max_labels=max_label)
+    d = CustomImageDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels=max_label)
     #d.prepare_labels(True)
 
     for image, label in d.iter_batch():        

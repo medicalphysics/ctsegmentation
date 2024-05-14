@@ -105,7 +105,8 @@ class dummy_context(object):
 
 def train(model, loss, optimizer, batch, device='cuda'):
 ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
-
+## for loss https://arxiv.org/pdf/1707.03237v3
+## eller CrossEntropyLoss eller NLLLoss med LogSoftMax lag
     model.train(True)
     data = batch['data']
     target = batch['target']
