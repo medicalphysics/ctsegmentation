@@ -1,12 +1,15 @@
+import os
 import torch 
 import torch.distributed
 from torch import nn, autocast
 from matplotlib import pylab as plt
 from typing import Any, Optional, Tuple, Callable
-
+from tqdm import tqdm
 from dynamic_network_architectures.architectures.unet import PlainConvUNet, ResidualUNet
 
 from totseg_dataloader import TotSegDataset
+
+torch.set_num_threads(os.cpu_count()//2)
 
 class AllGatherGrad(torch.autograd.Function):
     # stolen from pytorch lightning
@@ -109,7 +112,7 @@ class InlineDiceLoss(nn.Module):
         d = x.subtract(y)
         d.square_()
         d.le_(self.class_delta_sqr)
-        return - x.mean()
+        return - d.mean()
 
 
 class dummy_context(object):
@@ -119,22 +122,22 @@ class dummy_context(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-def train_one_epoch(model, loss, optimizer, data, device='cuda'):
-## see https://pytorc
-# 
-# h.org/tutorials/beginner/introyt/trainingyt.html
+def train_one_epoch(model, loss, optimizer, data, device):
+## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
 ## for loss https://arxiv.org/pdf/1707.03237v3
 ## eller CrossEntropyLoss eller NLLLoss med LogSoftMax lag
     model.train(True)
+    
+    #pbar = tqdm(total=len(data), leave=False)
+    #for image, label in tqdm(data.iter_batch()):
     for image, label in data.iter_batch():
         image = image.to(device, non_blocking = True)
-        label = label.to(device, non_blocking = True)
+        label = label.to(device, non_blocking = False)
     
         optimizer.zero_grad(set_to_none=True)
 
-        output = model(image)       
+        output = model(image)
         l = loss(output, label)
-
 
         # Autocast can be annoying
         # If the device_type is 'cpu' then it's slow as heck and needs to be disabled.
@@ -146,23 +149,35 @@ def train_one_epoch(model, loss, optimizer, data, device='cuda'):
 
         l.backward()
         optimizer.step()
+        print(l)
+        #pbar.update(1)
+    #pbar.close()
+
+    torch.save(model.state_dict(), "model.pt")
+
+    return l
         
 
 
-def start_train():
-    runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 4,
-                                (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False)
+def start_train(device = 'cpu'):
+    #model = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
+    #                            (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
+    #model = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
+    #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
+                             (2, 2, 2, 2), False, nn.BatchNorm3d, None, None, nn.ReLU, deep_supervision=False).to(device)
     learning_rate = 1e-2
     learning_decay = 1e-5
-    optimizer = torch.optim.SGD(runet.parameters(), learning_rate, weight_decay=learning_decay,
+    optimizer = torch.optim.SGD(model.parameters(), learning_rate, weight_decay=learning_decay,
                                     momentum=0.99, nesterov=True)
-    dataset = TotSegDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels = 117, batch_size=1)
-    loss = InlineDiceLoss(dataset.max_labels)
-    train_one_epoch(runet, loss, optimizer, dataset, "cpu")
+    dataset = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", max_labels = 117, batch_size=4)
+    loss = InlineDiceLoss(dataset.max_labels).to(device)
+    train_one_epoch(model, loss, optimizer, dataset, device)
 
 
 if __name__=='__main__':
-    start_train()
+    start_train('cuda')
+    #start_train('cpu')
 
 """    data = torch.rand((4, 1, 128, 128, 128))
 

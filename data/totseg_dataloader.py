@@ -11,7 +11,7 @@ from matplotlib import pylab as plt
 
 class TotSegDataset(Dataset):
     def __init__(self, data_dir: str, max_labels=None, batch_size=4):  
-        self._train_shape = (128, 128, 128)     
+        self._train_shape = (128, 128, 64)     
         self._batch_size = batch_size   
         patients = os.listdir(data_dir)
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
@@ -89,7 +89,7 @@ class TotSegDataset(Dataset):
 
     def number_of_batches(self):
         return int(math.ceil(self.__len__()/self._batch_size))
-    
+
     def iter_batch(self):
         idx = 0
         while idx < self.__len__()//self._batch_size:
@@ -133,7 +133,8 @@ class TotSegDataset(Dataset):
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = TotSegDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels=max_label)
+    d = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", max_labels=max_label)
+    print("Number of patients: {}, number of  batches {}".format(len(d._item_paths), len(d._item_splits)))
     #d.prepare_labels(True)
 
     for image, label in d.iter_batch():        
