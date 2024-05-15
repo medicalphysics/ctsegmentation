@@ -9,7 +9,7 @@ import nibabel
 import math
 from matplotlib import pylab as plt
 
-class CustomImageDataset(Dataset):
+class TotSegDataset(Dataset):
     def __init__(self, data_dir: str, max_labels=None, batch_size=4):  
         self._train_shape = (128, 128, 128)     
         self._batch_size = batch_size   
@@ -18,9 +18,9 @@ class CustomImageDataset(Dataset):
         self._item_splits = self._calculate_data_splits()        
         if max_labels is None:
             self.prepare_labels()
-            self._max_labels = self._find_max_label()
+            self.max_labels = self._find_max_label()
         else: 
-            self._max_labels = max_labels
+            self.max_labels = max_labels
         
    
     def _calculate_data_splits(self):        
@@ -127,13 +127,13 @@ class CustomImageDataset(Dataset):
             image_part = image.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)
             label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)  
             
-        return torch.as_tensor((image_part+1024)/(1024+1024)).clamp_(0,1), torch.as_tensor(label_part/self._max_labels)
+        return torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), torch.as_tensor(label_part/self.max_labels, dtype=torch.float32)
         
 
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = CustomImageDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels=max_label)
+    d = TotSegDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels=max_label)
     #d.prepare_labels(True)
 
     for image, label in d.iter_batch():        

@@ -1,12 +1,12 @@
 import torch 
 import torch.distributed
 from torch import nn, autocast
+from matplotlib import pylab as plt
+from typing import Any, Optional, Tuple, Callable
 
 from dynamic_network_architectures.architectures.unet import PlainConvUNet, ResidualUNet
 
-from matplotlib import pylab as plt
-
-from typing import Any, Optional, Tuple, Callable
+from totseg_dataloader import TotSegDataset
 
 class AllGatherGrad(torch.autograd.Function):
     # stolen from pytorch lightning
@@ -96,6 +96,22 @@ class MemoryEfficientSoftDiceLoss(nn.Module):
         dc = dc.mean()
         return -dc
 
+
+
+
+class InlineDiceLoss(nn.Module):
+    def __init__(self, n_classes: int):
+        super(InlineDiceLoss, self).__init__()
+
+        self.class_delta_sqr = (1 / n_classes)**2
+
+    def forward(self, x, y):
+        d = x.subtract(y)
+        d.square_()
+        d.le_(self.class_delta_sqr)
+        return - x.mean()
+
+
 class dummy_context(object):
     def __enter__(self):
         pass
@@ -103,33 +119,34 @@ class dummy_context(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-def train(model, loss, optimizer, batch, device='cuda'):
-## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
+def train_one_epoch(model, loss, optimizer, data, device='cuda'):
+## see https://pytorc
+# 
+# h.org/tutorials/beginner/introyt/trainingyt.html
 ## for loss https://arxiv.org/pdf/1707.03237v3
 ## eller CrossEntropyLoss eller NLLLoss med LogSoftMax lag
     model.train(True)
-    data = batch['data']
-    target = batch['target']
-
-    data = data.to(device, non_blocking=True)
-    target = target.to(device, non_blocking=True)
-
+    for image, label in data.iter_batch():
+        image = image.to(device, non_blocking = True)
+        label = label.to(device, non_blocking = True)
     
+        optimizer.zero_grad(set_to_none=True)
 
-    optimizer.zero_grad(set_to_none=True)
+        output = model(image)       
+        l = loss(output, label)
 
 
-    # Autocast can be annoying
-    # If the device_type is 'cpu' then it's slow as heck and needs to be disabled.
-    # If the device_type is 'mps' then it will complain that mps is not implemented, even if enabled=False is set. Whyyyyyyy. (this is why we don't make use of enabled=False)
-    # So autocast will only be active if we have a cuda device.
-    with autocast(device, enabled=True) if device == 'cuda' else dummy_context():
-        output = model(data)       
-        l = loss(output, target)
+        # Autocast can be annoying
+        # If the device_type is 'cpu' then it's slow as heck and needs to be disabled.
+        # If the device_type is 'mps' then it will complain that mps is not implemented, even if enabled=False is set. Whyyyyyyy. (this is why we don't make use of enabled=False)
+        # So autocast will only be active if we have a cuda device.
+        #with autocast(device, enabled=True) if device == 'cuda' else dummy_context():
+        #    output = model(data)       
+        #    l = loss(output, target)
 
-    l.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 12)
-    optimizer.step()
+        l.backward()
+        optimizer.step()
+        
 
 
 def start_train():
@@ -139,19 +156,15 @@ def start_train():
     learning_decay = 1e-5
     optimizer = torch.optim.SGD(runet.parameters(), learning_rate, weight_decay=learning_decay,
                                     momentum=0.99, nesterov=True)
-    loss = MemoryEfficientSoftDiceLoss()
-    
-
-
-
-
-
-
+    dataset = TotSegDataset(r"/home/erlend/Totalsegmentator_dataset_v201/", max_labels = 117, batch_size=1)
+    loss = InlineDiceLoss(dataset.max_labels)
+    train_one_epoch(runet, loss, optimizer, dataset, "cpu")
 
 
 if __name__=='__main__':
+    start_train()
 
-    data = torch.rand((4, 1, 128, 128, 128))
+"""    data = torch.rand((4, 1, 128, 128, 128))
 
     punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
                              (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
@@ -185,3 +198,4 @@ if __name__=='__main__':
     #g = hl.build_graph(runet, data, transforms=None)
     #g.save("network_architecture.pdf")
     
+"""
