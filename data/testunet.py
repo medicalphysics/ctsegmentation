@@ -1,3 +1,4 @@
+from math import inf
 import os
 import torch 
 import torch.distributed
@@ -113,6 +114,19 @@ class InlineDiceLoss(nn.Module):
         d.square_()
         d.le_(self.class_delta_sqr)
         return - d.mean()
+    
+"""    def DICE_coeff(self, x, y):
+        with torch.no_grad():       
+            xx = x.detach().cpu().numpy()
+            yy = y.detach().cpu().numpy()
+            d = (xx-yy)**2
+
+            bins = np.arange(0, 1+self.class_delta_sqr, self.class_delta_sqr)+self.class_delta_sqr/2            
+
+            xd = np.digitize(xx, bins)
+            yd = np.digitize(yy, bins)
+            for i in range(bins.size):
+"""
 
 
 class dummy_context(object):
@@ -126,11 +140,11 @@ def train_one_epoch(model, loss, optimizer, data, device):
 ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
 ## for loss https://arxiv.org/pdf/1707.03237v3
 ## eller CrossEntropyLoss eller NLLLoss med LogSoftMax lag
-    model.train(True)
-    
-    #pbar = tqdm(total=len(data), leave=False)
-    #for image, label in tqdm(data.iter_batch()):
-    for image, label in data.iter_batch():
+
+    total_loss = 0
+    model.train(True)    
+    pbar = tqdm(total=len(data), leave=False)    
+    for ind, (image, label) in enumerate(data):
         image = image.to(device, non_blocking = True)
         label = label.to(device, non_blocking = False)
     
@@ -149,35 +163,83 @@ def train_one_epoch(model, loss, optimizer, data, device):
 
         l.backward()
         optimizer.step()
-        print(l)
-        #pbar.update(1)
-    #pbar.close()
+        total_loss += l.item()
+        if ind == 100:
+            break
+        pbar.update(1)
+        with torch.no_grad():            
+            plt.subplot(1, 3, 1)
+            plt.imshow(image[0,0,:,:,image.shape[4]//2], cmap='bone', vmin=0,vmax=1)
+            plt.subplot(1, 3, 2)
+            plt.imshow(label[0,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
+            plt.subplot(1, 3, 3)
+            plt.imshow(output[0,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
+            plt.show()
+    pbar.close()    
+    return total_loss/len(data)
 
-    torch.save(model.state_dict(), "model.pt")
+def validate(model, data, loss, device):
+    # Set the model to evaluation mode, disabling dropout and using population
+    # statistics for batch normalization.
+    model.eval()
+    running_vloss=0
+    # Disable gradient computation and reduce memory consumption.
+    with torch.no_grad():
+        for image, labels in data: 
+            image = image.to(device, non_blocking = True)
+            labels = labels.to(device, non_blocking = False)        
+            out = model(image)
+            vloss = loss(out, labels)
+            running_vloss += vloss
 
-    return l
-        
+    avg_loss = running_vloss / len(data)
+    print('LOSS valid {}'.format(avg_loss))
 
 
-def start_train(device = 'cpu'):
+
+def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
     #model = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
     #                            (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
     #model = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
     #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
+
+    
     model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
-                             (2, 2, 2, 2), False, nn.BatchNorm3d, None, None, nn.ReLU, deep_supervision=False).to(device)
+                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm3d, nonlin=nn.ReLU, deep_supervision=False).to(device)
+    
+    if load_model:
+        if os.path.exists("model.pt"):
+            model.load_state_dict(torch.load("model.pt"))
+        
+    
     learning_rate = 1e-2
     learning_decay = 1e-5
     optimizer = torch.optim.SGD(model.parameters(), learning_rate, weight_decay=learning_decay,
                                     momentum=0.99, nesterov=True)
-    dataset = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", max_labels = 117, batch_size=4)
+    dataset = TotSegDataset(r"C:\Users\ander\totseg", max_labels = 117, batch_size=batch_size)
+    dataset_val = TotSegDataset(r"C:\Users\ander\totseg", train=False, max_labels = 117, batch_size=batch_size)
+
     loss = InlineDiceLoss(dataset.max_labels).to(device)
     train_one_epoch(model, loss, optimizer, dataset, device)
 
+    epoch_loss = 1E6
+
+    for ind in range(n_epochs):
+        mean_loss = train_one_epoch(model, loss, optimizer, dataset, device)        
+        if mean_loss < epoch_loss:            
+            torch.save(model.state_dict(), "model.pt")
+            example = torch.rand((batch_size, 1, 128, 128, 64))
+            traced_script_module = torch.jit.trace(model, example)
+            traced_script_module.save("traced_model_{}.pt".format(batch_size))
+            epoch_loss = mean_loss
+        
+        validate(model, dataset_val, loss, device)
+
+
 
 if __name__=='__main__':
-    start_train('cuda')
-    #start_train('cpu')
+    #start_train('cuda')
+    start_train('cpu', batch_size=4, load_model=False)
 
 """    data = torch.rand((4, 1, 128, 128, 128))
 
