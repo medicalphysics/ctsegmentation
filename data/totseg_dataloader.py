@@ -10,6 +10,8 @@ import nibabel
 import math
 from matplotlib import pylab as plt
 
+
+
 class TotSegDataset(Dataset):
     def __init__(self, data_dir: str, train=True, max_labels=None, batch_size=4):  
         self._train_shape = (128, 128, 64)     
@@ -53,14 +55,21 @@ class TotSegDataset(Dataset):
                 label_exists = False
             else:
                 label_exists = True
-        
-        if not label_exists:
-            ct = nibabel.load(os.path.join(path, "ct.nii.gz"))
-            labels = np.zeros(ct.shape, dtype=np.float32)
-            for key, name in tqdm(VOLUMES.items(), leave=False):
-                lpart = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata()
-                labels[lpart.nonzero()] = key
-            nibabel.save(nibabel.Nifti1Image(labels, ct.affine), os.path.join(path, "labels.nii.gz")) 
+    
+        if not label_exists:            
+            d = list([(key, name) for key, name in VOLUMES.items()])
+            d.sort(key = lambda x: x[0])
+            first = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(d[0][1])))
+            arr = np.zeros(first.shape, dtype=np.uint8)
+            for ind, (key, name) in enumerate(tqdm(d, leave=False)):
+                sub = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata().astype(np.uint8)
+                arr[sub.nonzero()]=ind+1
+            #arr = np.array([nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata().astype(np.uint8) for key, name in d], dtype=np.uint8)            
+            im = nibabel.Nifti1Image(arr, first.affine)
+            im.set_data_dtype(np.uint8)
+            nibabel.save(im, os.path.join(path, "labels.nii.gz"))           
+            return True
+        return False
 
     def prepare_labels(self, overwrite=False):
         """Make labels array"""
@@ -69,7 +78,7 @@ class TotSegDataset(Dataset):
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()-1) as executor:                        
             pbar = tqdm(total=len(self._item_paths))
             futures = list([executor.submit(self._load_labels, p, overwrite) for p in self._item_paths])
-            for _ in concurrent.futures.as_completed(futures):
+            for res in concurrent.futures.as_completed(futures):            
                 pbar.update(1)
             pbar.close()
 
@@ -92,7 +101,7 @@ class TotSegDataset(Dataset):
         return int(math.ceil(len(self._item_splits)/self._batch_size))
      
     def __iter__(self):       
-        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:            
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:            
             for r in executor.map(self.__getitem__, range(len(self))):
                 yield r
         
@@ -147,7 +156,11 @@ class TotSegDataset(Dataset):
             
         return torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), torch.as_tensor(label_part/self.max_labels, dtype=torch.float32)
     
-   
+    def del_labels(self):
+        for pat in tqdm(self._item_paths):
+            dp = os.path.join(pat, 'labels.nii.gz')
+            if os.path.exists(dp):
+                os.remove(dp)
 
     def _iter_batch_part(self):
         pat = ""
@@ -165,27 +178,32 @@ class TotSegDataset(Dataset):
                 end_p = tuple((min(s, e) for e, s in zip(end, sh)))
                 pads = tuple(((0, e-s) for e,s in zip(end, end_p)))           
                 image_part = np.pad(image.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=-1024).reshape((1, 1) + self._train_shape)
-                label_part = np.pad(label.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=0).reshape((1, 1) + self._train_shape)
+                label_part = np.pad(label.slicer[:,beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=0).reshape((1, self.max_labels) + self._train_shape)
             else:
                 image_part = image.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)
-                label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)  
+                label_part = label.slicer[:,beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, self.max_labels) + self._train_shape)  
                 
             yield torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), torch.as_tensor(label_part/self.max_labels, dtype=torch.float32)
 
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = TotSegDataset(r"C:\Users\ander\totseg", train=False, max_labels=max_label)
-    print("Number of patients: {}, number of  batches {}".format(len(d._item_paths), len(d._item_splits)))
-    #d.prepare_labels(True)
+    d = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, max_labels=max_label)
+    #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
+    d.prepare_labels()
+    #d.del_labels()
+    t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, max_labels=max_label)
+    t.prepare_labels()
+    #d.del_labels()
 
-    for image, label in d:        
-        print(image.shape, d._batch_size)
-        for i in range(d._batch_size):
-            plt.subplot(2, d._batch_size, i+1)
-            plt.imshow(image[i,0,:,:,image.shape[4]//2], cmap='bone', vmin=0,vmax=1)
-        for i in range(d._batch_size):
-            plt.subplot(2, d._batch_size, d._batch_size+i+1)
-            plt.imshow(label[i,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
-        plt.show()
-    
+    if False:
+        for image, label in d:        
+            print(image.shape, label.shape, d._batch_size)
+            for i in range(d._batch_size):
+                plt.subplot(2, d._batch_size, i+1)
+                plt.imshow(image[i,0,:,:,image.shape[4]//2], cmap='bone', vmin=0,vmax=1)
+            for i in range(d._batch_size):
+                plt.subplot(2, d._batch_size, d._batch_size+i+1)
+                plt.imshow(label[i,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
+            plt.show()
+        

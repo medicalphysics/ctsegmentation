@@ -204,7 +204,11 @@ def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
     #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
 
     
-    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
+    dataset = TotSegDataset(r"C:\Users\ander\totseg", max_labels = 117, batch_size=batch_size)
+    dataset_val = TotSegDataset(r"C:\Users\ander\totseg", train=False, max_labels = 117, batch_size=batch_size)
+
+
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset.max_labels,
                                 (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm3d, nonlin=nn.ReLU, deep_supervision=False).to(device)
     
     if load_model:
@@ -216,10 +220,10 @@ def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
     learning_decay = 1e-5
     optimizer = torch.optim.SGD(model.parameters(), learning_rate, weight_decay=learning_decay,
                                     momentum=0.99, nesterov=True)
-    dataset = TotSegDataset(r"C:\Users\ander\totseg", max_labels = 117, batch_size=batch_size)
-    dataset_val = TotSegDataset(r"C:\Users\ander\totseg", train=False, max_labels = 117, batch_size=batch_size)
+    
+    #loss = InlineDiceLoss(dataset.max_labels).to(device)
+    loss = torch.nn.CrossEntropyLoss(weight=None, reduction='mean', label_smoothing=0.0)
 
-    loss = InlineDiceLoss(dataset.max_labels).to(device)
     train_one_epoch(model, loss, optimizer, dataset, device)
 
     epoch_loss = 1E6
