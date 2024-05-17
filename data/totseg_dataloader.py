@@ -11,9 +11,8 @@ import math
 from matplotlib import pylab as plt
 
 
-
 class TotSegDataset(Dataset):
-    def __init__(self, data_dir: str, train=True, max_labels=None, batch_size=4):  
+    def __init__(self, data_dir: str, train=True, batch_size=4):  
         self._train_shape = (128, 128, 64)     
         self._batch_size = batch_size   
         #patients = os.listdir(data_dir)
@@ -24,14 +23,8 @@ class TotSegDataset(Dataset):
             patients = df[df['split'] != 'train']['image_id']
 
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
-        self._item_splits = self._calculate_data_splits()        
-        if max_labels is None:
-            self.prepare_labels()
-            self.max_labels = self._find_max_label()
-        else: 
-            self.max_labels = max_labels
-
-         
+        self._item_splits = self._calculate_data_splits()  
+        self.max_labels = 117         
    
     def _calculate_data_splits(self):         
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
@@ -75,7 +68,7 @@ class TotSegDataset(Dataset):
         """Make labels array"""
         print("Making labels arrays")
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()-1) as executor:                        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()*2) as executor:                        
             pbar = tqdm(total=len(self._item_paths))
             futures = list([executor.submit(self._load_labels, p, overwrite) for p in self._item_paths])
             for res in concurrent.futures.as_completed(futures):            
@@ -107,6 +100,10 @@ class TotSegDataset(Dataset):
         
 
     def iter_batches(self):
+        if self._batch_size == 1:
+            yield from self._iter_batch_part()
+            return
+
         data = list()
         for batch in self._iter_batch_part():
             data.append(batch)
@@ -178,24 +175,25 @@ class TotSegDataset(Dataset):
                 end_p = tuple((min(s, e) for e, s in zip(end, sh)))
                 pads = tuple(((0, e-s) for e,s in zip(end, end_p)))           
                 image_part = np.pad(image.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=-1024).reshape((1, 1) + self._train_shape)
-                label_part = np.pad(label.slicer[:,beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=0).reshape((1, self.max_labels) + self._train_shape)
+                label_part = np.pad(label.slicer[beg[0]:end_p[0], beg[1]:end_p[1], beg[2]:end_p[2]].get_fdata(), pads, constant_values=0).reshape((1, 1) + self._train_shape)
             else:
                 image_part = image.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)
-                label_part = label.slicer[:,beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, self.max_labels) + self._train_shape)  
+                label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], beg[2]:end[2]].get_fdata().reshape((1, 1) + self._train_shape)  
                 
             yield torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), torch.as_tensor(label_part/self.max_labels, dtype=torch.float32)
 
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, max_labels=max_label)
+    d = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False)
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     d.prepare_labels()
     #d.del_labels()
-    t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, max_labels=max_label)
+    t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
     t.prepare_labels()
-    #d.del_labels()
+    #t.del_labels()
 
+    
     if False:
         for image, label in d:        
             print(image.shape, label.shape, d._batch_size)

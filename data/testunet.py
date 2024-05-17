@@ -112,8 +112,8 @@ class InlineDiceLoss(nn.Module):
     def forward(self, x, y):
         d = x.subtract(y)
         d.square_()
-        d.le_(self.class_delta_sqr)
-        return - d.mean()
+        #d.le_(self.class_delta_sqr)
+        return -d.mean()
     
 """    def DICE_coeff(self, x, y):
         with torch.no_grad():       
@@ -151,8 +151,7 @@ def train_one_epoch(model, loss, optimizer, data, device):
         optimizer.zero_grad(set_to_none=True)
 
         output = model(image)
-        l = loss(output, label)
-
+        l = loss(output, label)        
         # Autocast can be annoying
         # If the device_type is 'cpu' then it's slow as heck and needs to be disabled.
         # If the device_type is 'mps' then it will complain that mps is not implemented, even if enabled=False is set. Whyyyyyyy. (this is why we don't make use of enabled=False)
@@ -163,10 +162,9 @@ def train_one_epoch(model, loss, optimizer, data, device):
 
         l.backward()
         optimizer.step()
-        total_loss += l.item()
-        if ind == 100:
-            break
+        total_loss += l.item()       
         pbar.update(1)
+        """
         with torch.no_grad():            
             plt.subplot(1, 3, 1)
             plt.imshow(image[0,0,:,:,image.shape[4]//2], cmap='bone', vmin=0,vmax=1)
@@ -175,6 +173,7 @@ def train_one_epoch(model, loss, optimizer, data, device):
             plt.subplot(1, 3, 3)
             plt.imshow(output[0,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
             plt.show()
+        """
     pbar.close()    
     return total_loss/len(data)
 
@@ -204,11 +203,11 @@ def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
     #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
 
     
-    dataset = TotSegDataset(r"C:\Users\ander\totseg", max_labels = 117, batch_size=batch_size)
-    dataset_val = TotSegDataset(r"C:\Users\ander\totseg", train=False, max_labels = 117, batch_size=batch_size)
+    dataset = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=batch_size)
+    dataset_val = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=batch_size)
 
 
-    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset.max_labels,
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
                                 (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm3d, nonlin=nn.ReLU, deep_supervision=False).to(device)
     
     if load_model:
@@ -222,7 +221,9 @@ def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
                                     momentum=0.99, nesterov=True)
     
     #loss = InlineDiceLoss(dataset.max_labels).to(device)
-    loss = torch.nn.CrossEntropyLoss(weight=None, reduction='mean', label_smoothing=0.0)
+    #loss = torch.nn.CrossEntropyLoss(weight=None, reduction='mean', label_smoothing=0.0)
+    #loss = MemoryEfficientSoftDiceLoss()
+    loss = torch.nn.MSELoss(reduction='mean').to(device)
 
     train_one_epoch(model, loss, optimizer, dataset, device)
 
@@ -242,8 +243,8 @@ def start_train(n_epochs = 5, device = 'cpu', batch_size=4, load_model=True):
 
 
 if __name__=='__main__':
-    #start_train('cuda')
-    start_train('cpu', batch_size=4, load_model=False)
+    start_train(device='cuda',batch_size=1, load_model=False)
+    #start_train(device='cpu', batch_size=1, load_model=False)
 
 """    data = torch.rand((4, 1, 128, 128, 128))
 
