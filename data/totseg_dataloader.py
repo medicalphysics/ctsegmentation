@@ -97,7 +97,23 @@ class TotSegDataset(Dataset):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:            
             for r in executor.map(self.__getitem__, range(len(self))):
                 yield r
-        
+    
+    def get_volumes(self):
+        vols = dict()
+        for i in range(1, 118):
+            vols[i]=0
+        for path in tqdm(self._item_paths):
+            try:
+                _ = os.path.exists(os.path.join(path, "labels.nii.gz"))
+            except:
+                raise ValueError("Label do not exists")
+            else:
+                vol = nibabel.load(os.path.join(path, "labels.nii.gz")).get_fdata().astype(np.uint8)
+                for key in list(vols.keys()):
+                    vols[key]+= (vol == key).sum()
+        return vols
+
+            
 
     def iter_batches(self):
         if self._batch_size == 1:
@@ -187,10 +203,14 @@ if __name__ == '__main__':
     max_label = max([k for k in VOLUMES.keys()])
     d = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False)
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
-    d.prepare_labels()
+    #d.prepare_labels()
     #d.del_labels()
+
+    v=d.get_volumes()
+    print(v)
+
     t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
-    t.prepare_labels()
+    #t.prepare_labels()
     #t.del_labels()
 
     
