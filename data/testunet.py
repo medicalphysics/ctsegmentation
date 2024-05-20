@@ -9,7 +9,7 @@ from typing import Any, Optional, Tuple, Callable
 from tqdm import tqdm
 from dynamic_network_architectures.architectures.unet import PlainConvUNet, ResidualUNet
 
-from totseg_dataloader import TotSegDataset
+from totseg_dataloader import TotSegDataset2D
 
 torch.set_num_threads(os.cpu_count()//2)
 
@@ -111,6 +111,7 @@ class DiceSignLoss(nn.Module):
         self._n_classes=n_classes
     
     def forward(self, x, y):
+        x.mul_(y)
         l = x*y
         return l.sum()
 
@@ -194,12 +195,12 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
     #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
 
     
-    dataset = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=batch_size)
-    dataset_val = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=batch_size)
+    dataset = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=batch_size)
+    dataset_val = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=batch_size)
 
 
-    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
-                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm3d, nonlin=nn.ReLU, deep_supervision=False).to(device)
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset.max_labels+1,
+                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm2d, nonlin=nn.ReLU, deep_supervision=False).to(device)
     
     if load_model:
         if os.path.exists("model.pt"):
@@ -218,6 +219,7 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
     #loss = torch.nn.CrossEntropyLoss(weight=None, reduction='mean', label_smoothing=0.0)
     #loss = MemoryEfficientSoftDiceLoss()
     #loss = torch.nn.MSELoss(reduction='mean').to(device)
+    loss = DiceSignLoss()
 
     train_one_epoch(model, loss, optimizer, dataset, device)
 
@@ -262,12 +264,26 @@ if __name__=='__main__':
     #start_train(device='cuda',batch_size=3, load_model=True)
     #start_train(device='cpu', batch_size=1, load_model=False)
 
-    #d = dataset_val = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=1)
+    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=4)
     #predict(d)
+    #d.shuffle()
+    image, label = d[50]
+    print(image.shape)
+    print(label.shape)
+    with torch.no_grad():
+        label_exp=label.mul(torch.arange(d.max_labels+1)).sum(dim=-1, keepdim=True)
+        print(label_exp.shape)
+        plt.subplot(1, 4, 1)
+        plt.imshow(image[0,0,:,:])
+        plt.subplot(1, 4, 2)
+        plt.imshow(label[0,0,:,:, 87])
+        plt.subplot(1, 4, 3)    
+        plt.imshow(label_exp[0,0,:,:, 0])    
+        plt.show()
 
+"""
 
-
-"""    data = torch.rand((4, 1, 128, 128, 128))
+   data = torch.rand((4, 1, 128, 128, 128))
 
     punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
                              (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
