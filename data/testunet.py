@@ -136,9 +136,9 @@ def train_one_epoch(model, loss, optimizer, data, device, shuffle=True):
         optimizer.zero_grad(set_to_none=True)
 
         output = model(image)
-
-        l = loss(output, label)        
        
+        l = loss(output, label)        
+        
         l.backward()
         optimizer.step()
         total_loss += l.item()       
@@ -272,14 +272,33 @@ def predict(data):
         
 
 if __name__=='__main__':
-    start_train(n_epochs = 1, device='cuda', batch_size=32, load_model=True)
-    #start_train(n_epochs = 1, device='cpu', batch_size=32, load_model=False)
+    #start_train(n_epochs = 1, device='cuda', batch_size=8, load_model=False)
+    start_train(n_epochs = 1, device='cpu', batch_size=32, load_model=False)
+
+    if True:
+        d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=2)
+        image, label = d[40]
+        print(image.shape)
+        print(label.shape)
+        label_exp=label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)
+        print(label_exp.shape)
+        plt.subplot(1, 3, 1)
+        plt.imshow(image[0, 0,:,:])
+        plt.subplot(1, 3, 2)
+        plt.imshow(label[0,0,:,:])
+        plt.subplot(1, 3, 3)
+        plt.imshow(label_exp[0,0,:,:])
+        plt.show()
+        
+
+
+
+
 
    
 
 """
-
-   data = torch.rand((4, 1, 128, 128, 128))
+    data = torch.rand((4, 1, 128, 128, 128))
 
     punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
                              (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
@@ -289,28 +308,8 @@ if __name__=='__main__':
                                 (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
 
-
     runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
                                 (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False)
     print(runet.compute_conv_feature_map_size(data.shape[2:]))
-    
-
-    punet.eval()
-    with torch.no_grad():
-        ans = punet.forward(data)
-
-
-    plt.imshow(ans[0][0,0,:,:,63])
-
-    plt.show()
-    ## test trace
-    #traced = torch.jit.trace(runet, data)
-   # print(traced)
-    #traced.save(r"c:/Users/ander/source/ctsegmentation/data/models/test.pt")
-
-    #print(runet)
-
-    #g = hl.build_graph(runet, data, transforms=None)
-    #g.save("network_architecture.pdf")
     
 """

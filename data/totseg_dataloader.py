@@ -2,8 +2,8 @@ import os
 import pandas
 import numpy as np
 import concurrent
+import queue
 import random
-from multiprocessing import Pool
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
@@ -35,14 +35,14 @@ class TotSegDataset2D(Dataset):
     def shuffle(self):
         random.shuffle(self._item_splits)
 
-    def _calculate_data_splits(self):         
+    def _calculate_data_splits(self): 
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
-        splits =  [(s[0]//self._train_shape[0], s[1]//self._train_shape[1], s[2]) for s in shape]
+        splits =  [(s[0]//self._train_shape[0]+1, s[1]//self._train_shape[1]+1, s[2]) for s in shape]
         data = list()
         for ind, spl in enumerate(splits):            
             x, y, z = spl
-            for i in range(x+1):
-                    for j in range(y+1):
+            for i in range(x):
+                    for j in range(y):
                         for k in range(z):                            
                             data.append((ind, (i, j, k)))
         return data
@@ -102,12 +102,26 @@ class TotSegDataset2D(Dataset):
     def __len__(self):
         return int(math.ceil(len(self._item_splits)/self._batch_size))
      
-    def __iter__(self):       
-        """with Pool(processes=12) as pool:
-            for r in pool.imap_unordered(self.__getitem__, range(len(self))):
-                yield r"""
-        for i in range(len(self)):
-            yield self[i]
+
+
+    def __iter__(self):  
+        n_cont = 24      
+        q = queue.Queue(maxsize=n_cont*2)
+        def start_jobs(queue, dataset):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_cont) as executor2:  
+                for i in range(len(dataset)):
+                    job = executor2.submit(dataset.__getitem__, i)
+                    q.put(job)
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exe:
+            exe.submit(start_jobs, q, self)
+            for i in range(len(self)):
+                f = q.get()
+                yield f.result()
+                q.task_done()
+        q.join()
+
+    
         
     def get_volumes(self):
         vols = dict()
@@ -153,22 +167,19 @@ class TotSegDataset2D(Dataset):
             end_p = tuple((min(s, e) for e, s in zip(end, sh)))
             pads = tuple(((0, e-s) for e,s in zip(end, end_p)))  + ((0,0), )
             image_part = np.pad(image.slicer[beg[0]:end_p[0], beg[1]:end_p[1], split[2]:split[2]+1].get_fdata(), pads, constant_values=-1024).reshape((1, 1) + self._train_shape)
-            label_part = np.pad(label.slicer[beg[0]:end_p[0], beg[1]:end_p[1], split[2]:split[2]+1].get_fdata(), pads, constant_values=0).astype(np.uint8).reshape((1,) + self._train_shape + (1,))
+            label_part = np.pad(label.slicer[beg[0]:end_p[0], beg[1]:end_p[1], split[2]:split[2]+1].get_fdata(), pads, constant_values=0).astype(np.uint8).reshape((1,1) + self._train_shape )
         else:
             image_part = image.slicer[beg[0]:end[0], beg[1]:end[1], split[2]:split[2]+1].get_fdata().reshape((1, 1) + self._train_shape)
-            label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], split[2]:split[2]+1].get_fdata().reshape((1,) + self._train_shape + (1,)).astype(np.uint8)         
-                
-
-        #.reshape((1, 1) + self._train_shape)
-        #.reshape((1,) + self._train_shape + (1,))
-        label_t = torch.zeros((1,) + self._train_shape + (self._label_tensor_dim,), dtype=torch.bool)                
+            label_part = label.slicer[beg[0]:end[0], beg[1]:end[1], split[2]:split[2]+1].get_fdata().reshape((1,1) + self._train_shape ).astype(np.uint8)         
+                        
+        label_t = torch.zeros((1, self._label_tensor_dim) + self._train_shape, dtype=torch.bool)                
         with torch.no_grad():
             label_part_t = torch.as_tensor(label_part, dtype=torch.int64)
-            label_t.scatter_(3, label_part_t, 1)
+            label_t.scatter_(1, label_part_t, 1)
 
-        #label_exp=label_t.mul(torch.arange(self._label_tensor_dim)).sum(dim=-1, keepdim=True)
+        # To get index array:
+        #label_exp=label.mul(torch.arange(self._train_shape).reshape((self._train_shape, 1, 1))).sum(dim=1, keepdim=True)        
 
-        #return torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), torch.as_tensor(label_part, dtype=torch.uint8)
         return torch.as_tensor((image_part+1024)/(1024+1024), dtype=torch.float32).clamp_(0,1), label_t
 
     def del_labels(self):
@@ -331,14 +342,14 @@ class TotSegDataset3D(Dataset):
 
 if __name__ == '__main__':    
     max_label = max([k for k in VOLUMES.keys()])
-    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False)
+    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False)
+    d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=8)
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
     #d.del_labels()
 
-
-
-
+    for ind, ( image, label ) in enumerate(d):
+        print(ind)
     
     #t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
     #t.prepare_labels()
@@ -348,7 +359,7 @@ if __name__ == '__main__':
     if True:
         d.shuffle()
         for image, label in d:        
-            print(image.shape, label.shape, d._batch_size)
+            print(image.shape, label.shape)
             if len(image.shape) == 5:
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, i+1)
@@ -358,11 +369,12 @@ if __name__ == '__main__':
                     plt.imshow(label[i,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
                 plt.show()
             else:
+                label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)        
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, i+1)
                     plt.imshow(image[i,0,:,:], cmap='bone', vmin=0,vmax=1)
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, d._batch_size+i+1)
-                    plt.imshow(label[i,0,:,:], vmin=0,vmax=1)
+                    plt.imshow(label_index[i,0,:,:])
                 plt.show()
             
