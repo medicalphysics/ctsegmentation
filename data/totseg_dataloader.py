@@ -153,6 +153,7 @@ class TotSegDataset2D(Dataset):
         image = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.float32)
         label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=torch.bool)
         with torch.no_grad():
+            image.subtract_(1024.0)
             label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
             pat = ""
             for ind, (pat_id, xbeg, ybeg, zbeg) in enumerate(batch):
@@ -165,10 +166,10 @@ class TotSegDataset2D(Dataset):
                 # we are in cpu land so .numpy() is OK
                 image.numpy()[ind, 0, :xend-xbeg, :yend-ybeg] = np.squeeze(ct.slicer[xbeg:xend, ybeg:yend, zbeg:zbeg+1].get_fdata().astype(np.float32))
                 label_idx.numpy()[ind, 0, :xend-xbeg, :yend-ybeg] = np.squeeze(seg.slicer[xbeg:xend, ybeg:yend, zbeg:zbeg+1].get_fdata().astype(np.int64))
-            label.scatter_(1, label_idx, 1)
-            image.subtract_(1024.0)
+            label.scatter_(1, label_idx, 1)            
+            image.add_(1024.0)
             image.divide_(2048)
-            image.clamp_(min=0, max=1)
+            image.clamp_(min=0, max=1)            
         return image, label
 
 
@@ -341,7 +342,6 @@ if __name__ == '__main__':
     #t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
     #t.prepare_labels()
     #t.del_labels()
-
     
     if True:
         d.shuffle()
