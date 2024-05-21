@@ -106,29 +106,28 @@ class MemoryEfficientSoftDiceLoss(nn.Module):
 
 class DiceSignLoss(nn.Module):
     """On the dice loss gradient and the ways to mimic it:Hoel Kervadec, Marleen De Bruijne"""
-    def __init__(self, n_classes: int):
-        super(DiceSignLoss, self).__init__()
-        self._n_classes=n_classes
+    def __init__(self):
+        super(DiceSignLoss, self).__init__()        
     
     def forward(self, x, y):
-        x.mul_(y)
-        l = x*y
-        return l.sum()
+        x.mul_(y)        
+        return -x.sum()
 
     def diceScore(self, x, y):
-        pass
+        xbin = x.ge(0.5)        
+        nom = xbin*y
+        return 2*nom.sum()/(xbin.sum()+y.sum())
 
-
-
-
-
-def train_one_epoch(model, loss, optimizer, data, device):
+def train_one_epoch(model, loss, optimizer, data, device, shuffle=True):
     ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
     ## for loss https://arxiv.org/pdf/1707.03237v3
     ## eller CrossEntropyLoss eller NLLLoss med LogSoftMax lag
 
     total_loss = 0
-    model.train(True)    
+    model.train(True)  
+    if shuffle:
+        data.shuffle()
+
     pbar = tqdm(total=len(data), leave=True)    
     for ind, (image, label) in enumerate(data):
         image = image.to(device, non_blocking = True)
@@ -137,13 +136,13 @@ def train_one_epoch(model, loss, optimizer, data, device):
         optimizer.zero_grad(set_to_none=True)
 
         output = model(image)
+
         l = loss(output, label)        
        
         l.backward()
         optimizer.step()
         total_loss += l.item()       
-        pbar.update(1)
-      
+        pbar.update(1)            
         """
         with torch.no_grad():            
             plt.subplot(1, 3, 1)
@@ -162,6 +161,7 @@ def validate(model, data, loss, device):
     # statistics for batch normalization.
     model.eval()
     running_vloss=0
+    running_dice = 0
     # Disable gradient computation and reduce memory consumption.
     with torch.no_grad():
         pbar = tqdm(total=len(data), leave=True)    
@@ -171,20 +171,30 @@ def validate(model, data, loss, device):
             out = model(image)
             vloss = loss(out, labels)
             running_vloss += vloss.item()
-            pbar.update(1)            
+            running_dice += loss.diceScore(out, labels).item()
+            pbar.update(1)                  
         pbar.close()
 
     avg_loss = running_vloss / len(data)
-    print('LOSS valid {}'.format(avg_loss))
-    return avg_loss
+    avg_dice = running_dice / len(data)
+    print('LOSS valid {}, DICE: {}'.format(avg_loss, avg_dice))
+    return avg_loss, avg_dice
 
-def plot_loss(train, valid):
+def plot_loss(train, valid, dice):
     bt, t = zip(*train)
     bv, v = zip(*valid)
+    bd, d = zip(*dice)
+    plt.subplot(2, 1, 1)
     plt.plot(bt, t, label='Train loss')
     plt.plot(bv, v, label='Validation loss')
     plt.xlabel('Batch')
     plt.ylabel('Loss')
+    plt.legend()    
+    plt.subplot(2, 1, 2)
+    plt.plot(bd, d, label='Dice coeff')
+    plt.xlabel('Batch')
+    plt.ylabel('Dice coeff')
+    plt.legend()    
     plt.savefig("train.png", dpi=600)
 
 
@@ -199,14 +209,13 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
     dataset_val = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=batch_size)
 
 
-    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset.max_labels+1,
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset._label_tensor_dim,
                                 (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm2d, nonlin=nn.ReLU, deep_supervision=False).to(device)
     
     if load_model:
         if os.path.exists("model.pt"):
-            model.load_state_dict(torch.load("model.pt"))
-        
-    
+            model.load_state_dict(torch.load("model.pt"))        
+
     #learning_rate = 1e-2
     #learning_decay = 1e-5
     #optimizer = torch.optim.SGD(model.parameters(), learning_rate, weight_decay=learning_decay,
@@ -221,10 +230,10 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
     #loss = torch.nn.MSELoss(reduction='mean').to(device)
     loss = DiceSignLoss()
 
-    train_one_epoch(model, loss, optimizer, dataset, device)
-
+   
     epoch_loss = list()
     val_loss = list()
+    dice_coeff = list()
     epoch_current_loss = 1E6
 
     for ind in range(n_epochs):
@@ -237,13 +246,15 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
             #traced_script_module.save("traced_model_{}.pt".format(batch_size))
             epoch_current_loss = mean_loss
         
-        val_loss_current = validate(model, dataset_val, loss, device)
+        val_loss_current, val_dice_current = validate(model, dataset_val, loss, device)
         val_loss.append((ind+1, val_loss_current))
-        plot_loss(epoch_loss, val_loss)
+        dice_coeff.append((ind+1, val_dice_current))
+        if ind > 0:
+            plot_loss(epoch_loss, val_loss, dice_coeff)
 
 def predict(data):
-    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), 1,
-                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm3d, nonlin=nn.ReLU, deep_supervision=False)
+    model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), data._label_tensor_dim,
+                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm2d, nonlin=nn.ReLU, deep_supervision=False).to(device)
     model.load_state_dict(torch.load("model.pt"))
     model.eval()
     with torch.no_grad():        
@@ -261,25 +272,10 @@ def predict(data):
         
 
 if __name__=='__main__':
-    #start_train(device='cuda',batch_size=3, load_model=True)
-    #start_train(device='cpu', batch_size=1, load_model=False)
+    start_train(n_epochs = 1, device='cuda', batch_size=32, load_model=True)
+    #start_train(n_epochs = 1, device='cpu', batch_size=32, load_model=False)
 
-    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=4)
-    #predict(d)
-    #d.shuffle()
-    image, label = d[50]
-    print(image.shape)
-    print(label.shape)
-    with torch.no_grad():
-        label_exp=label.mul(torch.arange(d.max_labels+1)).sum(dim=-1, keepdim=True)
-        print(label_exp.shape)
-        plt.subplot(1, 4, 1)
-        plt.imshow(image[0,0,:,:])
-        plt.subplot(1, 4, 2)
-        plt.imshow(label[0,0,:,:, 87])
-        plt.subplot(1, 4, 3)    
-        plt.imshow(label_exp[0,0,:,:, 0])    
-        plt.show()
+   
 
 """
 
