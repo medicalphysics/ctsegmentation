@@ -11,7 +11,7 @@ from dynamic_network_architectures.architectures.unet import PlainConvUNet, Resi
 
 from totseg_dataloader import TotSegDataset2D
 
-torch.set_num_threads(os.cpu_count()//2)
+#torch.set_num_threads(os.cpu_count()//2)
 
 class AllGatherGrad(torch.autograd.Function):
     # stolen from pytorch lightning
@@ -110,6 +110,8 @@ class DiceSignLoss(nn.Module):
         super(DiceSignLoss, self).__init__()        
     
     def forward(self, x, y):
+        #wy = -2*y+0.1        
+        #return (x*wy).sum()
         x.mul_(y)        
         return -x.sum()
 
@@ -142,17 +144,7 @@ def train_one_epoch(model, loss, optimizer, data, device, shuffle=True):
         l.backward()
         optimizer.step()
         total_loss += l.item()       
-        pbar.update(1)            
-        """
-        with torch.no_grad():            
-            plt.subplot(1, 3, 1)
-            plt.imshow(image[0,0,:,:,image.shape[4]//2], cmap='bone', vmin=0,vmax=1)
-            plt.subplot(1, 3, 2)
-            plt.imshow(label[0,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
-            plt.subplot(1, 3, 3)
-            plt.imshow(output[0,0,:,:,image.shape[4]//2], vmin=0,vmax=1)
-            plt.show()
-        """
+        pbar.update(1)       
     pbar.close()    
     return total_loss/len(data)
 
@@ -184,29 +176,31 @@ def plot_loss(train, valid, dice):
     bt, t = zip(*train)
     bv, v = zip(*valid)
     bd, d = zip(*dice)
-    plt.subplot(2, 1, 1)
+    plt.subplot(1, 2, 1)
     plt.plot(bt, t, label='Train loss')
     plt.plot(bv, v, label='Validation loss')
     plt.xlabel('Batch')
     plt.ylabel('Loss')
     plt.legend()    
-    plt.subplot(2, 1, 2)
+    plt.subplot(1, 2, 2)
     plt.plot(bd, d, label='Dice coeff')
     plt.xlabel('Batch')
     plt.ylabel('Dice coeff')
-    plt.legend()    
+    plt.legend()
+    plt.tight_layout()    
     plt.savefig("train.png", dpi=600)
+    plt.clf()
 
 
-def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
+def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, data_path = None):
     #model = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
     #                            (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
     #model = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
     #                         (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False).to(device)
 
     
-    dataset = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=batch_size)
-    dataset_val = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=False, batch_size=batch_size)
+    dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size)
+    dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size)
 
 
     model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), dataset._label_tensor_dim,
@@ -237,7 +231,7 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
     epoch_current_loss = 1E6
 
     for ind in range(n_epochs):
-        mean_loss = train_one_epoch(model, loss, optimizer, dataset, device)        
+        mean_loss = train_one_epoch(model, loss, optimizer, dataset, device, shuffle=False)        
         epoch_loss.append((ind+1, mean_loss))
         if mean_loss < epoch_current_loss:            
             torch.save(model.state_dict(), "model.pt")
@@ -254,29 +248,42 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True):
 
 def predict(data):
     model = PlainConvUNet(1, 5, (32, 64, 125, 256, 320), nn.Conv2d, 3, (1, 2, 2, 2, 2), (2, 2, 2, 2, 2), data._label_tensor_dim,
-                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm2d, nonlin=nn.ReLU, deep_supervision=False).to(device)
+                                (2, 2, 2, 2), conv_bias=False, norm_op=nn.BatchNorm2d, nonlin=nn.ReLU, deep_supervision=False)
     model.load_state_dict(torch.load("model.pt"))
     model.eval()
     with torch.no_grad():        
-        for image, label in data:                
-            out = model(image).detach().cpu().numpy()
-            plt.subplot(1, 3, 1)
-            plt.imshow(image[0,0,:,:,image.shape[4]//2], cmap='bone')
-            plt.subplot(1, 3, 2)
-            plt.imshow(label[0,0,:,:,image.shape[4]//2]*117)
-            plt.subplot(1, 3, 3)
+        for image, label in data:  
+            label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True) 
+                        
             
+            out = model(image)
+            #out = out.ge(0.5)
+            out_index = out.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True) 
+            plt.subplot(2, 2, 1)
+            plt.imshow(image[0,0,:,:])
+            plt.subplot(2, 2, 2)
+            plt.imshow(label_index[0,0,:,:])
+            plt.subplot(2, 2, 3)
+            plt.imshow(out[0,21,:,:])
             plt.show()
-
+            
 
         
 
 if __name__=='__main__':
-    #start_train(n_epochs = 1, device='cuda', batch_size=8, load_model=False)
-    start_train(n_epochs = 1, device='cpu', batch_size=32, load_model=False)
+    dataset_path = r"C:\Users\ander\totseg"
+
+    start_train(n_epochs = 15, device='cuda', batch_size=8, load_model=True, data_path = dataset_path)
+    #start_train(n_epochs = 15, device='cpu', batch_size=32, load_model=True, data_path = dataset_path)
 
     if True:
-        d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=2)
+        dataset = TotSegDataset2D(dataset_path, train=True, batch_size=32)
+        predict(dataset)
+
+
+
+    if False:
+        d = TotSegDataset2D(dataset_path, train=True, batch_size=16)
         image, label = d[40]
         print(image.shape)
         print(label.shape)
