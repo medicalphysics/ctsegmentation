@@ -15,9 +15,10 @@ from matplotlib import pylab as plt
 
 
 class TotSegDataset2D(Dataset):
-    def __init__(self, data_dir: str, train=True, batch_size=4):  
+    def __init__(self, data_dir: str, train=True, batch_size=4, dtype=torch.float32):  
         self._train_shape = (256, 256)     
         self._batch_size = batch_size   
+        self._dtype = dtype
         #patients = os.listdir(data_dir)
         df = pandas.read_csv(os.path.join(data_dir, "meta.csv"), sep=';')
         if train:
@@ -124,7 +125,7 @@ class TotSegDataset2D(Dataset):
         queue.join()
 
     def __iter__(self):        
-        q = queue.Queue(maxsize=os.cpu_count()*2)    
+        q = queue.Queue(maxsize=os.cpu_count()//2)    
         t = threading.Thread(target=self._iter_worker, args=(self, q))
         t.start()
         for _ in range(len(self)):
@@ -152,7 +153,7 @@ class TotSegDataset2D(Dataset):
 
     def __getitem__(self, idx):
         batch = self._item_splits[idx]
-        image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=torch.float32)        
+        image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=self._dtype)        
         with torch.no_grad():            
             label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
             pat = ""
@@ -169,7 +170,7 @@ class TotSegDataset2D(Dataset):
             image.add_(1024.0)
             image.divide_(2048)
             image.clamp_(min=0, max=1)            
-            label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=torch.bool)
+            label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
             label.scatter_(1, label_idx, 1)            
             
         return image, label
