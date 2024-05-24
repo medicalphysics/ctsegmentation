@@ -27,7 +27,7 @@ class TotSegDataset2D(Dataset):
             patients = df[df['split'] != 'train']['image_id']
 
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
-        self._item_splits = self._calculate_data_splits()
+        self._item_splits = self._calculate_data_splits()[:10]
         self.max_labels = 117
         self._label_tensor_dim=2
         while self._label_tensor_dim < self.max_labels:
@@ -154,8 +154,9 @@ class TotSegDataset2D(Dataset):
     def __getitem__(self, idx):
         batch = self._item_splits[idx]
         image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=self._dtype)        
+        label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.uint8)
         with torch.no_grad():            
-            label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
+            #label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
             pat = ""
             for ind, (pat_id, xbeg, ybeg, zbeg) in enumerate(batch):
                 if self._item_paths[pat_id] != pat:
@@ -170,10 +171,11 @@ class TotSegDataset2D(Dataset):
             image.add_(1024.0)
             image.divide_(2048)
             image.clamp_(min=0, max=1)            
-            label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
-            label.scatter_(1, label_idx, 1)            
             
-        return image, label
+            #label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
+            #label.scatter_(1, label_idx, 1)            
+            
+        return image, label_idx
 
 
     def del_labels(self):
