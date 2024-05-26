@@ -15,7 +15,7 @@ from matplotlib import pylab as plt
 
 
 class TotSegDataset2D(Dataset):
-    def __init__(self, data_dir: str, train=True, batch_size=4, dtype=torch.float32):  
+    def __init__(self, data_dir: str, train=True, batch_size=4, volumes=None, dtype=torch.float32):  
         self._train_shape = (256, 256)     
         self._batch_size = batch_size   
         self._dtype = dtype
@@ -25,9 +25,11 @@ class TotSegDataset2D(Dataset):
             patients = df[df['split'] == 'train']['image_id']
         else:
             patients = df[df['split'] != 'train']['image_id']
-
+        self._volumes = dict()
+        if volumes is not None:
+            self._volumes = {k+1:v for k, v in enumerate(volumes)}
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
-        self._item_splits = self._calculate_data_splits()
+        self._item_splits = self._calculate_data_splits(volumes)
         self.max_labels = 117
         self._label_tensor_dim=2
         while self._label_tensor_dim < self.max_labels:
@@ -36,20 +38,20 @@ class TotSegDataset2D(Dataset):
     def shuffle(self):
         random.shuffle(self._item_splits)              
    
-    def _calculate_data_splits(self): 
+    def _calculate_data_splits(self, volumes=None): 
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
 
         splits = list()
         batch = list()
         min_pad_size = min(self._train_shape)//8
         for ind, sh in enumerate(shape):
-            x=0
+            x=0                
             while x+min_pad_size < sh[0]:
                 y=0
                 while y+min_pad_size < sh[1]:
                     z=0
                     while z < sh[2]:                        
-                        batch.append((ind, x, y, z))
+                        batch.append((ind, x, y, z))                                                
                         z+=1
                         if len(batch) == self._batch_size:
                             splits.append(batch)
@@ -59,6 +61,35 @@ class TotSegDataset2D(Dataset):
             x, y, z = sh
         if len(batch) > 0:
             splits.append(batch)
+
+
+        if volumes is not None: 
+            print("Preparing volumes")           
+            ssplits = list()
+            labels = np.asarray(nibabel.load(os.path.join(self._item_paths[ind], "labels.nii.gz")).dataobj)
+            cpat = None
+            for batch in tqdm(splits, leave=False):
+                for split in batch:
+                    if cpat != split[0]:
+                        cpat = split[0]                        
+                        label = np.asarray(nibabel.load(os.path.join(self._item_paths[cpat], "labels.nii.gz")).dataobj)
+                    xb = split[1]
+                    yb = split[2]                
+                    xe = min(label.shape[0], xb+self._train_shape[0])
+                    ye = min(label.shape[1], yb+self._train_shape[1])
+                    sub_label = label[xb:xe, yb:ye, split[3]]
+                    if any([v in sub_label for v in volumes]):
+                        ssplits.append(split)
+            splits.clear()
+            batch = list()
+            for split in ssplits:
+                batch.append(split)
+                if len(batch) == self._batch_size:
+                    splits.append(batch)
+                    batch.clear()
+            if len(batch) != 0:
+                splits.append(batch)            
+
         return splits
 
     def _load_labels(self, path, overwrite=False):
@@ -166,12 +197,15 @@ class TotSegDataset2D(Dataset):
                 xend = min(xbeg + self._train_shape[0], ct.shape[0])
                 yend = min(ybeg + self._train_shape[1], ct.shape[1])
                 # we are in cpu land so .numpy() is OK
-                image.numpy()[ind, 0, 0:xend-xbeg, 0:yend-ybeg] = np.squeeze(ct[xbeg:xend, ybeg:yend, zbeg:zbeg+1])
-                label_idx.numpy()[ind, 0, 0:xend-xbeg, 0:yend-ybeg] = np.squeeze(seg[xbeg:xend, ybeg:yend, zbeg:zbeg+1])
+                image.numpy()[ind, 0, 0:xend-xbeg, 0:yend-ybeg] = np.squeeze(ct[xbeg:xend, ybeg:yend, zbeg])
+                label_idx.numpy()[ind, 0, 0:xend-xbeg, 0:yend-ybeg] = np.squeeze(seg[xbeg:xend, ybeg:yend, zbeg])
             image.add_(1024.0)
             image.divide_(2048)
             image.clamp_(min=0, max=1)            
-            
+            if len(self._volumes) >0:
+                for ind, v in self._volumes.items():
+                    label_idx[label_idx == v] = ind
+
             #label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
             #label.scatter_(1, label_idx, 1)            
             
@@ -197,9 +231,10 @@ class TotSegDataset2D(Dataset):
         return data
 
 if __name__ == '__main__':        
-    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=6)
+    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, batch_size=48)
+    #d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], batch_size=48)
     
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
@@ -210,25 +245,12 @@ if __name__ == '__main__':
     #t.prepare_labels()
     #t.del_labels()    
     
-    import time
-    d.shuffle()
-    start = time.time()
-    N = len(d) 
-    for ind, (im, label) in enumerate(d):
-        if ind % 100 == 1:
-            end = time.time()
-            spi = (end-start)/ind
-            print("sec per it: {}, ETA: {}min, total time: {}min".format(spi, spi*(N-ind)/60, spi*N/60))
-            
-
-
     
-    if False:
-       # d.shuffle()
-        dd = (d[42], d[84])
-        for image, label in dd:        
-            print(image.shape, label.shape)
-            print(image.max(), image.min())
+    
+    if True:
+        d.shuffle()        
+        for image, label in d:                    
+            print(image.max(), image.min(), label.min(), label.max())
             if len(image.shape) == 5:
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, i+1)
@@ -245,7 +267,8 @@ if __name__ == '__main__':
                     plt.imshow(image[i,0,:,:], cmap='bone', vmin=0,vmax=1)
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, d._batch_size+i+1)
-                    plt.imshow(label_index[i,0,:,:])
+                    #plt.imshow(label_index[i,0,:,:])
+                    plt.imshow(label[i,0,:,:])
                 plt.tight_layout()
                 plt.show()
             
