@@ -51,3 +51,4 @@
 /validation/data/case5world.bin
 data/utilities/__pycache__/*
 data/__pycache__/*
+data/model.pt

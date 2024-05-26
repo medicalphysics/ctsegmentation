@@ -98,13 +98,13 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, da
    
     
     dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, dtype = torch.float32)
-    dataset_val = TotSegDataset2D(data_path, train=True, batch_size=batch_size, dtype = torch.float32)
+    dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, dtype = torch.float32)
 
 
     model = get_model(dataset._label_tensor_dim).to(device)
     
    
-    initial_lr = 1e-2
+    initial_lr = 1e-4
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
                                 momentum=0.99, nesterov=True)
@@ -167,7 +167,7 @@ def predict(data):
         for image, label in data:  
             #label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)                                 
             out_r = model(image)
-            out = torch.softmax(out_r, 1)
+            out = torch.sigmoid(out_r)
             #out = out.ge(0.5)
             out_index = out.mul(torch.arange(out.shape[1]).reshape((out.shape[1], 1, 1))).sum(dim=1, keepdim=True) 
             plt.subplot(2, 2, 1)
@@ -175,42 +175,50 @@ def predict(data):
             plt.subplot(2, 2, 2)
             plt.imshow(label[0,0,:,:])
             plt.subplot(2, 2, 3)
-            plt.imshow(out[0,21,:,:])
+            plt.imshow(out_r[0,80,:,:])
             plt.subplot(2, 2, 4)
-            plt.imshow(out_index[0,0,:,:])
+            plt.imshow(out[0,80,:,:])
             plt.show()
             
 
         
 
 if __name__=='__main__':
-    dataset_path = r"C:\Users\ander\totseg"
-    #dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
-    batch_size=4
+    #dataset_path = r"C:\Users\ander\totseg"
+    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    batch_size=18
     #start_train(n_epochs = 15, device='cuda', batch_size=batch_size, load_model=True, data_path = dataset_path)
-    start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
+    #start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
-    if True:
+    if False:
         dataset = TotSegDataset2D(dataset_path, train=True, batch_size=batch_size)
         predict(dataset)
 
 
 
-    if False:
+    if True:
         d = TotSegDataset2D(dataset_path, train=True, batch_size=16)
-        image, label = d[40]
-        print(image.shape)
-        print(label.shape)
-        label_exp=label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)
-        print(label_exp.shape)
-        plt.subplot(1, 3, 1)
-        plt.imshow(image[0, 0,:,:])
-        plt.subplot(1, 3, 2)
-        plt.imshow(label[0,0,:,:])
-        plt.subplot(1, 3, 3)
-        plt.imshow(label_exp[0,0,:,:])
-        plt.show()
+        image, label = d[8]
+        model = get_model(d._label_tensor_dim)
+        state = torch.load("model.pt")            
+        model.load_state_dict(state['model'])
+        model.eval()
+        with torch.no_grad(): 
+            #out = torch.sigmoid(model(image)).detach()
+            out = model(image).detach()
+
+        print(image.shape, label.shape, out.shape)
         
+        #label_exp=label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)
+        for i in range(image.shape[0]):
+            plt.subplot(1, 3, 1)
+            plt.imshow(image[0, 0,:,:])
+            plt.subplot(1, 3, 2)
+            plt.imshow(label[0,0,:,:])
+            plt.subplot(1, 3, 3)
+            plt.imshow(out[0,80,:,:])
+            plt.show()
+            
 
 
 

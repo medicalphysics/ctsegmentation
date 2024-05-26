@@ -27,7 +27,7 @@ class TotSegDataset2D(Dataset):
             patients = df[df['split'] != 'train']['image_id']
 
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
-        self._item_splits = self._calculate_data_splits()[:10]
+        self._item_splits = self._calculate_data_splits()
         self.max_labels = 117
         self._label_tensor_dim=2
         while self._label_tensor_dim < self.max_labels:

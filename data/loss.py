@@ -6,7 +6,8 @@ from torch import nn
 
 
 def softmax_helper_dim1(x: torch.Tensor) -> torch.Tensor:    
-    return torch.softmax(x, 1)
+    #return torch.softmax(x, 1)
+    return torch.sigmoid(x)
 
 def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
     """
@@ -207,7 +208,7 @@ class DC_and_CE_loss(nn.Module):
         self.ignore_label = ignore_label
 
         self.ce = RobustCrossEntropyLoss(**ce_kwargs)
-        self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)
+        self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)        
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor):
         """
