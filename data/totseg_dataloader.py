@@ -30,8 +30,7 @@ class TotSegDataset2D(Dataset):
             self._volumes = {k+1:v for k, v in enumerate(volumes)}
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
         if rewrite_labels:
-            self.del_labels()
-            self.prepare_labels()
+            self.prepare_labels(True)
 
         self._item_splits = self._calculate_data_splits(volumes)
         self.max_labels = 117 if volumes is None else len(volumes)
@@ -96,17 +95,9 @@ class TotSegDataset2D(Dataset):
         return splits
 
     def _load_labels(self, path, overwrite=False):
-        label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))
-        if label_exists and overwrite:
-            try:
-                #_ = nibabel.load(os.path.join(path, "labels.nii.gz")).get_fdata()
-                _ = np.asarray(nibabel.load(os.path.join(path, "labels.nii.gz")).dataobj)
-            except:
-                label_exists = False
-            else:
-                label_exists = True
+        label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))        
     
-        if not label_exists:            
+        if not label_exists or overwrite:            
             d = list([(key, name) for key, name in VOLUMES.items()])
             d.sort(key = lambda x: x[0])
             ct = nibabel.load(os.path.join(path, "ct.nii.gz"))
@@ -168,8 +159,6 @@ class TotSegDataset2D(Dataset):
             q.task_done()                    
             yield f        
         t.join()
-
-    
         
     def get_volumes(self):
         vols = dict()
@@ -238,10 +227,10 @@ class TotSegDataset2D(Dataset):
         return data
 
 if __name__ == '__main__':        
-    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
+    #d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
     
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
@@ -254,7 +243,7 @@ if __name__ == '__main__':
     
     
     
-    if False:
+    if True:
         d.shuffle()
         for imIdx in range(len(d)):
             image, label = d[imIdx]
