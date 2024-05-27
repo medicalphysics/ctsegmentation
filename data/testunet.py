@@ -9,7 +9,7 @@ from typing import Any, Optional, Tuple, Callable
 from tqdm import tqdm
 from dynamic_network_architectures.architectures.unet import PlainConvUNet, ResidualEncoderUNet
 from totseg_dataloader import TotSegDataset2D
-from loss import DC_and_CE_loss, MemoryEfficientSoftDiceLoss
+from loss import DC_and_CE_loss, MemoryEfficientSoftDiceLoss, softmax_helper_dim1
 
 
 #torch.set_num_threads(os.cpu_count()//2)
@@ -94,29 +94,25 @@ def get_model(N):
                                 conv_bias=True, norm_op=torch.nn.modules.instancenorm.InstanceNorm2d, norm_op_kwargs={"eps":1e-5, 'affine':True}, nonlin=torch.nn.LeakyReLU, nonlin_kwargs= {"inplace":True} )
     return model
 
-def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, data_path = None):
-   
+def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, data_path = None):   
     volumes = list([10,11,12,13,14])
-
     
     dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
-    #dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
-    dataset=dataset_val
+    dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)    
 
     model = get_model(dataset._label_tensor_dim).to(device)
     
-   
     initial_lr = 1e-4
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
                                 momentum=0.99, nesterov=True)
-    sheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=5,)
+    sheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=n_epochs)
 
     #loss = InlineDiceLoss(dataset.max_labels).to(device)
-    lossweights = torch.zeros(dataset._label_tensor_dim, dtype=torch.float32)
-    for i in range(1, dataset.max_labels+1):
-        lossweights[i] = 1
-    lossweights=lossweights.to(device)
+    #lossweights = torch.zeros(dataset._label_tensor_dim, dtype=torch.float32)
+    #for i in range(1, dataset.max_labels+1):
+    #    lossweights[i] = 1
+    #lossweights=lossweights.to(device)
     #loss = torch.nn.CrossEntropyLoss(weight=lossweights, reduction='mean', label_smoothing=0.0)
     #loss  = torch.nn.NLLLoss(weight=lossweights, reduction='mean') #sammen med logsoftmax som nonlin lag
     #loss = MemoryEfficientSoftDiceLoss()
@@ -129,7 +125,7 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, da
    
     epoch_loss = list()
     val_loss = list()   
-    epoch_current_loss = 1E6
+    epoch_current_loss = 1E9
 
     if load_model:
         if os.path.exists("model.pt"):
@@ -169,7 +165,7 @@ def predict(data):
         for image, label in data:  
             #label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)                                 
             out_r = model(image)
-            out = torch.sigmoid(out_r)
+            out = softmax_helper_dim1(out_r)
             #out = out.ge(0.5)
             out_index = out.mul(torch.arange(out.shape[1]).reshape((out.shape[1], 1, 1))).sum(dim=1, keepdim=True) 
             plt.subplot(2, 2, 1)
