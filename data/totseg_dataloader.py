@@ -15,11 +15,11 @@ from matplotlib import pylab as plt
 
 
 class TotSegDataset2D(Dataset):
-    def __init__(self, data_dir: str, train=True, batch_size=4, volumes=None, dtype=torch.float32):  
+    def __init__(self, data_dir: str, train=True, batch_size=4, volumes=None, rewrite_labels = False , dtype=torch.float32):  
         self._train_shape = (256, 256)     
         self._batch_size = batch_size   
         self._dtype = dtype
-        #patients = os.listdir(data_dir)
+
         df = pandas.read_csv(os.path.join(data_dir, "meta.csv"), sep=';')
         if train:
             patients = df[df['split'] == 'train']['image_id']
@@ -29,6 +29,10 @@ class TotSegDataset2D(Dataset):
         if volumes is not None:
             self._volumes = {k+1:v for k, v in enumerate(volumes)}
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
+        if rewrite_labels:
+            self.del_labels()
+            self.prepare_labels()
+
         self._item_splits = self._calculate_data_splits(volumes)
         self.max_labels = 117 if volumes is None else len(volumes)
         self._label_tensor_dim=2 
@@ -95,7 +99,8 @@ class TotSegDataset2D(Dataset):
         label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))
         if label_exists and overwrite:
             try:
-                _ = nibabel.load(os.path.join(path, "labels.nii.gz")).get_fdata()
+                #_ = nibabel.load(os.path.join(path, "labels.nii.gz")).get_fdata()
+                _ = np.asarray(nibabel.load(os.path.join(path, "labels.nii.gz")).dataobj)
             except:
                 label_exists = False
             else:
@@ -104,13 +109,13 @@ class TotSegDataset2D(Dataset):
         if not label_exists:            
             d = list([(key, name) for key, name in VOLUMES.items()])
             d.sort(key = lambda x: x[0])
-            first = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(d[0][1])))
-            arr = np.zeros(first.shape, dtype=np.uint8)
+            ct = nibabel.load(os.path.join(path, "ct.nii.gz"))
+            arr = np.zeros(ct.shape, dtype=np.uint8)
             for ind, (key, name) in enumerate(tqdm(d, leave=False)):
-                sub = nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata().astype(np.uint8)
+                sub = np.asarray(nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).dataobj, dtype=None)
                 arr[sub.nonzero()]=ind+1
             #arr = np.array([nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata().astype(np.uint8) for key, name in d], dtype=np.uint8)            
-            im = nibabel.Nifti1Image(arr, first.affine)
+            im = nibabel.Nifti1Image(arr, ct.affine)
             im.set_data_dtype(np.uint8)
             nibabel.save(im, os.path.join(path, "labels.nii.gz"))           
             return True
@@ -120,7 +125,7 @@ class TotSegDataset2D(Dataset):
         """Make labels array"""
         print("Making labels arrays")
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()*2) as executor:                        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:                        
             pbar = tqdm(total=len(self._item_paths))
             futures = list([executor.submit(self._load_labels, p, overwrite) for p in self._item_paths])
             for res in concurrent.futures.as_completed(futures):            
@@ -236,7 +241,7 @@ if __name__ == '__main__':
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
     
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
@@ -249,7 +254,8 @@ if __name__ == '__main__':
     
     
     
-    if True:
+    if False:
+        d.shuffle()
         for imIdx in range(len(d)):
             image, label = d[imIdx]
             
@@ -272,6 +278,7 @@ if __name__ == '__main__':
                     plt.subplot(2, d._batch_size, d._batch_size+i+1)
                     #plt.imshow(label_index[i,0,:,:])
                     plt.imshow(label[i,0,:,:])
+                plt.tight_layout()
                 plt.tight_layout()
                 plt.show()
             
