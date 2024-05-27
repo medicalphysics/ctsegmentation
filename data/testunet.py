@@ -96,10 +96,12 @@ def get_model(N):
 
 def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, data_path = None):
    
-    
-    dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, dtype = torch.float32)
-    dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, dtype = torch.float32)
+    volumes = list([10,11,12,13,14])
 
+    
+    dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
+    #dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
+    dataset=dataset_val
 
     model = get_model(dataset._label_tensor_dim).to(device)
     
@@ -184,11 +186,11 @@ def predict(data):
         
 
 if __name__=='__main__':
-    #dataset_path = r"C:\Users\ander\totseg"
-    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    dataset_path = r"C:\Users\ander\totseg"
+    #dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size=18
     #start_train(n_epochs = 15, device='cuda', batch_size=batch_size, load_model=True, data_path = dataset_path)
-    #start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
+    start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:
         dataset = TotSegDataset2D(dataset_path, train=True, batch_size=batch_size)

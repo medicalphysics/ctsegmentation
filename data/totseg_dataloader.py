@@ -30,8 +30,8 @@ class TotSegDataset2D(Dataset):
             self._volumes = {k+1:v for k, v in enumerate(volumes)}
         self._item_paths = list([os.path.join(data_dir, p) for p in patients if os.path.isdir(os.path.join(data_dir, p))])
         self._item_splits = self._calculate_data_splits(volumes)
-        self.max_labels = 117
-        self._label_tensor_dim=2
+        self.max_labels = 117 if volumes is None else len(volumes)
+        self._label_tensor_dim=2 
         while self._label_tensor_dim < self.max_labels:
             self._label_tensor_dim*=2 
 
@@ -65,28 +65,27 @@ class TotSegDataset2D(Dataset):
 
         if volumes is not None: 
             print("Preparing volumes")           
-            ssplits = list()
-            labels = np.asarray(nibabel.load(os.path.join(self._item_paths[ind], "labels.nii.gz")).dataobj)
+            ssplits = list()            
             cpat = None
             for batch in tqdm(splits, leave=False):
                 for split in batch:
-                    if cpat != split[0]:
-                        cpat = split[0]                        
-                        label = np.asarray(nibabel.load(os.path.join(self._item_paths[cpat], "labels.nii.gz")).dataobj)
-                    xb = split[1]
-                    yb = split[2]                
+                    pat, xb, yb, zb = split
+                    if cpat != pat:
+                        cpat = pat                        
+                        label = np.asarray(nibabel.load(os.path.join(self._item_paths[cpat], "labels.nii.gz")).dataobj)                    
                     xe = min(label.shape[0], xb+self._train_shape[0])
                     ye = min(label.shape[1], yb+self._train_shape[1])
-                    sub_label = label[xb:xe, yb:ye, split[3]]
-                    if any([v in sub_label for v in volumes]):
-                        ssplits.append(split)
+                    sub_label = label[xb:xe, yb:ye, zb]
+                    if any(v in sub_label for v in volumes):
+                        ssplits.append((pat, xb, yb, zb))
+
             splits.clear()
             batch = list()
             for split in ssplits:
                 batch.append(split)
                 if len(batch) == self._batch_size:
                     splits.append(batch)
-                    batch.clear()
+                    batch = list()
             if len(batch) != 0:
                 splits.append(batch)            
 
@@ -202,9 +201,12 @@ class TotSegDataset2D(Dataset):
             image.add_(1024.0)
             image.divide_(2048)
             image.clamp_(min=0, max=1)            
-            if len(self._volumes) >0:
+            if len(self._volumes) > 0:
+                label_corr = torch.zeros_like(label_idx)                
                 for ind, v in self._volumes.items():
-                    label_idx[label_idx == v] = ind
+                    label_corr.masked_fill_(label_idx == v, ind)                    
+                label_idx=label_corr
+                        
 
             #label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
             #label.scatter_(1, label_idx, 1)            
@@ -231,10 +233,10 @@ class TotSegDataset2D(Dataset):
         return data
 
 if __name__ == '__main__':        
-    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    #d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], batch_size=48)
+    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], batch_size=8)
     
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
@@ -248,9 +250,9 @@ if __name__ == '__main__':
     
     
     if True:
-        d.shuffle()        
-        for image, label in d:                    
-            print(image.max(), image.min(), label.min(), label.max())
+        for imIdx in range(len(d)):
+            image, label = d[imIdx]
+            
             if len(image.shape) == 5:
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, i+1)
@@ -263,6 +265,7 @@ if __name__ == '__main__':
                 with torch.no_grad():
                     label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)        
                 for i in range(d._batch_size):
+                    print(image[i,0,:,:].max(), image[i,0,:,:].min(), label[i,0,:,:].min(), label[i,0,:,:].max())
                     plt.subplot(2, d._batch_size, i+1)
                     plt.imshow(image[i,0,:,:], cmap='bone', vmin=0,vmax=1)
                 for i in range(d._batch_size):
