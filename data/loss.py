@@ -6,8 +6,8 @@ from torch import nn
 
 
 def softmax_helper_dim1(x: torch.Tensor) -> torch.Tensor:    
-    #return torch.softmax(x, 1)
-    return torch.sigmoid(x)
+    return torch.softmax(x, 1)
+    #return torch.sigmoid(x)
 
 def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
     """
@@ -209,6 +209,32 @@ class DC_and_CE_loss(nn.Module):
 
         self.ce = RobustCrossEntropyLoss(**ce_kwargs)
         self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)        
+    
+    def diceCoeff(self, net_output, target, ignore_label=None):
+        """
+        target must be b, c, x, y(, z) with c=1
+        :param net_output:
+        :param target:
+        :return:
+        """
+        if ignore_label is not None:
+            assert target.shape[1] == 1, 'ignore label is not implemented for one hot encoded target variables ' \
+                                         '(DC_and_CE_loss)'
+            mask = target != self.ignore_label
+            # remove ignore label from target, replace with one of the known labels. It doesn't matter because we
+            # ignore gradients in those areas anyway
+            target_dice = torch.where(mask, target, 0)
+            num_fg = mask.sum()
+        else:
+            target_dice = target
+            mask = None
+
+        dc_loss = -self.dc(net_output, target_dice, loss_mask=mask)
+        return dc_loss
+
+    def ceCoeff(self, net_output, target):
+        return -self.ce(net_output, target[:, 0])
+        
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor):
         """

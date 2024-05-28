@@ -65,9 +65,7 @@ class TotSegDataset2D(Dataset):
         if len(batch) > 0:
             splits.append(batch)
 
-
-        if volumes is not None: 
-            print("Preparing volumes")           
+        if volumes is not None:               
             ssplits = list()            
             cpat = None
             for batch in tqdm(splits, leave=False):
@@ -227,10 +225,10 @@ class TotSegDataset2D(Dataset):
         return data
 
 if __name__ == '__main__':        
-    d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    #d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
+    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
     
     #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     #d.prepare_labels()
