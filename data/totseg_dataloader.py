@@ -38,6 +38,9 @@ class TotSegDataset2D(Dataset):
         while self._label_tensor_dim < self.max_labels:
             self._label_tensor_dim*=2 
 
+    def batch_shape(self):
+        return (self._batch_size, 1) + self._train_shape
+
     def shuffle(self):
         random.shuffle(self._item_splits)              
    
@@ -157,7 +160,15 @@ class TotSegDataset2D(Dataset):
             q.task_done()                    
             yield f        
         t.join()
+    
+    def iter_ever(self, shuffle=True):
+        while True:
+            if shuffle:
+                self.shuffle()
+            yield from self.__iter__()
         
+
+
     def get_volumes(self):
         vols = dict()
         for i in range(1, 118):

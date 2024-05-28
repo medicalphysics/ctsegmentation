@@ -14,32 +14,25 @@ from matplotlib import pylab as plt
 torch.set_num_threads(os.cpu_count())
 
 
-def train_one_epoch(model, loss, optimizer, sheduler, data, device, shuffle=True):
-    ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html    
-
-    total_loss = 0
+def train_one_epoch(model, loss, optimizer, data, device, shuffle=True, n_iter=None):
+    ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html     
     model.train(True)  
-    if shuffle:
-        data.shuffle()
-
-    pbar = tqdm(total=len(data), leave=True)    
-    for ind, (image, label) in enumerate(data):
+    stop_ind = min(len(data),n_iter)    
+    pbar = tqdm(total=stop_ind, leave=False)        
+    for ind, (image, label) in enumerate(data.iter_ever(shuffle)):
         image = image.to(device, non_blocking = True)
         label = label.to(device, non_blocking = True)
-    
         optimizer.zero_grad(set_to_none=True)
-    
         output = model(image)        
-        l = loss(output, label)        
-            
+        l = loss(output, label)                    
         l.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 12)
-        optimizer.step()
-        sheduler.step()
-        total_loss += l.item()       
-        pbar.update(1)       
+        optimizer.step()                
+        pbar.update(1)
+        if ind >= stop_ind:
+            break
     pbar.close()    
-    return total_loss/len(data)
+    return 
 
 
 def validate(model, data, loss, device):
@@ -47,31 +40,30 @@ def validate(model, data, loss, device):
     # statistics for batch normalization.
     model.eval()
     running_vloss=0
+    running_dice =0
     # Disable gradient computation and reduce memory consumption.
     with torch.no_grad():
-        pbar = tqdm(total=len(data), leave=True)    
+        pbar = tqdm(total=len(data), leave=False)    
         for image, labels in data: 
             image = image.to(device, non_blocking = True)
             labels = labels.to(device, non_blocking = True)                 
             out = model(image)
             vloss = loss(out, labels)
-            running_vloss += vloss.item()            
-            pbar.update(1)                  
+            vdice = loss.diceCoeff(out, labels)
+            running_dice += float(vdice.cpu())
+            running_vloss += float(vloss.cpu())            
+            pbar.update(1)
         pbar.close()
 
-    avg_loss = running_vloss / len(data)    
-    print('LOSS valid {}'.format(avg_loss))
-    return avg_loss
+    return running_vloss / len(data), running_dice/len(data)
+    
 
-def plot_loss(train, valid):
-    bt, t = zip(*train)
-    bv, v = zip(*valid)    
-    plt.subplot(1, 1, 1)
-    plt.plot(bt, t, label='Train loss')
-    plt.plot(bv, v, label='Validation loss')
-    plt.xlabel('Batch')
-    plt.ylabel('Loss')
-    plt.legend()        
+def plot_loss(loss, lr, dice): 
+    for ind, (v, l) in enumerate(zip([loss, lr, dice], ['Validation Loss', 'Learning rate', 'Dice Score'])):
+        plt.subplot(1, 3, ind+1)
+        plt.plot(v)
+        plt.xlabel('Batch nr')
+        plt.ylabel(l)
     plt.tight_layout()    
     plt.savefig("train.png", dpi=600)
     plt.clf()
@@ -93,38 +85,28 @@ def get_model(N):
                                 conv_bias=True, norm_op=torch.nn.modules.instancenorm.InstanceNorm2d, norm_op_kwargs={"eps":1e-5, 'affine':True}, nonlin=torch.nn.LeakyReLU, nonlin_kwargs= {"inplace":True} )
     return model
 
-def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, data_path = None):   
+def start_train(n_epochs = 150, device = 'cpu', batch_size=4, load_model=True, data_path = None):   
     volumes = list([10,11,12,13,14])
     
     dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
-    dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)    
+    #dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)    
+    dataset=dataset_val
 
     model = get_model(dataset._label_tensor_dim).to(device)
     
-    initial_lr = 1e-4
+    initial_lr = 1.0
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
                                 momentum=0.99, nesterov=True)
-    sheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=n_epochs)
-
-    #loss = InlineDiceLoss(dataset.max_labels).to(device)
-    #lossweights = torch.zeros(dataset._label_tensor_dim, dtype=torch.float32)
-    #for i in range(1, dataset.max_labels+1):
-    #    lossweights[i] = 1
-    #lossweights=lossweights.to(device)
-    #loss = torch.nn.CrossEntropyLoss(weight=lossweights, reduction='mean', label_smoothing=0.0)
-    #loss  = torch.nn.NLLLoss(weight=lossweights, reduction='mean') #sammen med logsoftmax som nonlin lag
-    #loss = MemoryEfficientSoftDiceLoss()
-    #loss = torch.nn.MSELoss(reduction='mean').to(device)
-    #loss = DiceSignLoss()
-
-    loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}, weight_ce=1, weight_dice=1,
-                          ignore_label=0)
+    sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, cooldown=0, factor=0.2, threshold=0.01)
+    loss = DC_and_CE_loss({'batch_dice': False, 'smooth': 1e-5, 'do_bg': False}, {'label_smoothing':1e-5}, weight_ce=1, weight_dice=1,
+                          ignore_label=None).to(device)
 
    
-    epoch_loss = list()
-    val_loss = list()   
-    epoch_current_loss = 1E9
+    validation_loss = list()
+    dice_score = list()   
+    lr_rate = list()
+    min_val_loss = 1e9
 
     if load_model:
         if os.path.exists("model.pt"):
@@ -132,28 +114,34 @@ def start_train(n_epochs = 15, device = 'cpu', batch_size=4, load_model=True, da
             model.load_state_dict(state['model'])
             optimizer.load_state_dict(state['optimizer'])       
             sheduler.load_state_dict(state['sheduler'])
+            validation_loss = state['validation_loss']
+            dice_score = state['dice_score']
+            lr_rate = state['lr_rate']
+            min_val_loss = min(validation_loss)
+    
     for ind in range(n_epochs):
-        mean_loss = train_one_epoch(model, loss, optimizer, sheduler, dataset, device, shuffle=False)        
-        epoch_loss.append((ind+1, mean_loss)) 
-        print(mean_loss , epoch_current_loss)       
-        if mean_loss < epoch_current_loss: 
+        train_one_epoch(model, loss, optimizer, dataset, device, shuffle=True, n_iter=1000)                        
+        lossv, dicev = validate(model, dataset_val, loss, device)
+        sheduler.step(lossv)
+        lr_rate.append(sheduler.get_last_lr()[0])   
+        validation_loss.append(lossv)        
+        dice_score.append(dicev)
+        if min_val_loss > lossv:
+            min_val_loss = lossv
             state = {
                 'epoch': ind,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'sheduler':sheduler.state_dict(),                
+                'sheduler':sheduler.state_dict(), 
+                'validation_loss':validation_loss,
+                'dice_score':dice_score,
+                'lr_rate': lr_rate          
                 }
-            torch.save(state, "model.pt")           
-            #torch.save(model.state_dict(), "model.pt")
-            #example = torch.rand((batch_size, 1, 128, 128, 64), dtype=torch.float32)
-            #traced_script_module = torch.jit.trace(model, example)
-            #traced_script_module.save("traced_model_{}.pt".format(batch_size))
-            epoch_current_loss = mean_loss
-        
-        val_loss_current = validate(model, dataset_val, loss, device)
-        val_loss.append((ind+1, val_loss_current))        
-        if ind > 0:
-            plot_loss(epoch_loss, val_loss)
+            torch.save(state, "model.pt")                      
+            #example = torch.rand(dataset.batch_shape(), dtype=torch.float32)
+            #traced_script_module = torch.jit.trace(model.to('cpu'), example)
+            #traced_script_module.save("traced_model.pt")
+        plot_loss(validation_loss, lr_rate, dice_score)
 
 def predict(data):
     model = get_model(data._label_tensor_dim)
@@ -178,7 +166,7 @@ def predict(data):
             plt.show()
             
 
-def test_train(device = 'cpu', data_path = None, batch_size=1):   
+def test_train(device = 'cpu', data_path = None, batch_size=32):   
     volumes = list([10,11,12,13,14])    
     dataset = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32, rewrite_labels=False)        
     model = get_model(dataset._label_tensor_dim).to(device)
@@ -195,17 +183,17 @@ def test_train(device = 'cpu', data_path = None, batch_size=1):
             plt.show()
     """
 
-    n_iter = 350
+    n_iter = 10
 
 
-    initial_lr = 1e-1
+    initial_lr = 1.0
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
                                 momentum=0.99, nesterov=True)
-    #sheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=n_iter, power=2)
+    
     sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, cooldown=0, factor=0.2, threshold=0.01)
-    loss = DC_and_CE_loss({'batch_dice': False, 'smooth': 1e-5, 'do_bg': False}, {'label_smoothing':1e-5}, weight_ce=.1, weight_dice=.9,
-                          ignore_label=None)
+    loss = DC_and_CE_loss({'batch_dice': False, 'smooth': 1e-5, 'do_bg': False}, {'label_smoothing':1e-5}, weight_ce=1, weight_dice=1,
+                          ignore_label=None).to(device)
 
 
     load_model = True
@@ -232,7 +220,7 @@ def test_train(device = 'cpu', data_path = None, batch_size=1):
 
 
 
-    batch_idx = 250
+    batch_idx = 200
     
     
     pbar = tqdm(total=n_iter, leave=True)    
@@ -272,7 +260,7 @@ def test_train(device = 'cpu', data_path = None, batch_size=1):
     torch.save(state, "lung.pt")
 
 
-    traced = torch.jit.trace(model, torch.rand(image.shape))
+    traced = torch.jit.trace(model.to('cpu'), torch.rand(image.shape))
     traced.save("traced_lung.pt")
 
     model.eval()
@@ -300,18 +288,15 @@ def test_train(device = 'cpu', data_path = None, batch_size=1):
 
 
 
-
-
-
-
 if __name__=='__main__':
     dataset_path = r"C:\Users\ander\totseg"
-    test_train(data_path = dataset_path)
+    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    #test_train(data_path = dataset_path, device='cuda')
 
 
-    #dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
-    batch_size=18
-    #start_train(n_epochs = 15, device='cuda', batch_size=batch_size, load_model=True, data_path = dataset_path)
+    
+    batch_size=24
+    start_train(n_epochs = 150, device='cuda', batch_size=batch_size, load_model=True, data_path = dataset_path)
     #start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:
