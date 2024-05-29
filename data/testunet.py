@@ -85,20 +85,20 @@ def get_model(N):
                                 conv_bias=True, norm_op=torch.nn.modules.instancenorm.InstanceNorm2d, norm_op_kwargs={"eps":1e-5, 'affine':True}, nonlin=torch.nn.LeakyReLU, nonlin_kwargs= {"inplace":True} )
     return model
 
-def start_train(n_epochs = 150, device = 'cpu', batch_size=4, load_model=True, data_path = None):   
+def start_train(n_epochs = 150, device = 'cpu', batch_size=4, load_model=True, load_only_model=False, data_path = None):   
     volumes = list([10,11,12,13,14])
     
     dataset_val = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
     #dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)    
-    dataset=dataset_val
+    dataset = dataset_val
 
     model = get_model(dataset._label_tensor_dim).to(device)
     
-    initial_lr = 1.0
+    initial_lr = 0.04
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
                                 momentum=0.99, nesterov=True)
-    sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, cooldown=0, factor=0.2, threshold=0.01)
+    sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, cooldown=0, factor=0.2, threshold=0.01)
     loss = DC_and_CE_loss({'batch_dice': False, 'smooth': 1e-5, 'do_bg': False}, {'label_smoothing':1e-5}, weight_ce=1, weight_dice=1,
                           ignore_label=None).to(device)
 
@@ -112,8 +112,9 @@ def start_train(n_epochs = 150, device = 'cpu', batch_size=4, load_model=True, d
         if os.path.exists("model.pt"):
             state = torch.load("model.pt")            
             model.load_state_dict(state['model'])
-            optimizer.load_state_dict(state['optimizer'])       
-            sheduler.load_state_dict(state['sheduler'])
+            if not load_only_model:
+                optimizer.load_state_dict(state['optimizer'])       
+                sheduler.load_state_dict(state['sheduler'])
             validation_loss = state['validation_loss']
             dice_score = state['dice_score']
             lr_rate = state['lr_rate']
@@ -137,9 +138,8 @@ def start_train(n_epochs = 150, device = 'cpu', batch_size=4, load_model=True, d
                 'dice_score':dice_score,
                 'lr_rate': lr_rate          
                 }
-            torch.save(state, "model.pt")                      
-            #example = torch.rand(dataset.batch_shape(), dtype=torch.float32)
-            #traced_script_module = torch.jit.trace(model.to('cpu'), example)
+            torch.save(state, "model.pt")                                  
+            #traced_script_module = torch.jit.trace(model.to('cpu'), torch.rand(dataset.batch_shape(), dtype=torch.float32))
             #traced_script_module.save("traced_model.pt")
         plot_loss(validation_loss, lr_rate, dice_score)
 
@@ -159,148 +159,25 @@ def predict(data):
             plt.imshow(image[0,0,:,:])
             plt.subplot(2, 2, 2)
             plt.imshow(label[0,0,:,:])
-            plt.subplot(2, 2, 3)
-            plt.imshow(out_r[0,80,:,:])
+            plt.subplot(2, 2, 3)           
             plt.subplot(2, 2, 4)
-            plt.imshow(out[0,80,:,:])
+            plt.imshow(out[0,1,:,:])
             plt.show()
             
-
-def test_train(device = 'cpu', data_path = None, batch_size=32):   
-    volumes = list([10,11,12,13,14])    
-    dataset = TotSegDataset2D(data_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32, rewrite_labels=False)        
-    model = get_model(dataset._label_tensor_dim).to(device)
-    
-    """
-    for ind in range(0, len(dataset), 50):
-        image, label = dataset[ind]
-        for i in range(batch_size):
-            plt.subplot(1, 2, 1)
-            plt.imshow(image[i,0,:,:], cmap='bone')
-            plt.subplot(1, 2, 2)
-            plt.imshow(label[i,0,:,:])
-            print(ind)
-            plt.show()
-    """
-
-    n_iter = 10
-
-
-    initial_lr = 1.0
-    weight_decay = 3e-5
-    optimizer = torch.optim.SGD(model.parameters(), initial_lr, weight_decay=weight_decay,
-                                momentum=0.99, nesterov=True)
-    
-    sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, cooldown=0, factor=0.2, threshold=0.01)
-    loss = DC_and_CE_loss({'batch_dice': False, 'smooth': 1e-5, 'do_bg': False}, {'label_smoothing':1e-5}, weight_ce=1, weight_dice=1,
-                          ignore_label=None).to(device)
-
-
-    load_model = True
-    if load_model:
-       if os.path.exists("lung.pt"):
-           state = torch.load("lung.pt")            
-           model.load_state_dict(state['model'])
-           optimizer.load_state_dict(state['optimizer'])       
-           sheduler.load_state_dict(state['sheduler'])
-           loss_list = state['loss_list']
-           learn_rate = state['learn_rate']
-           dice_list = state['dice_list']
-           ce_list = state['ce_list']
-       else:
-           loss_list = list()
-           learn_rate = list()
-           dice_list = list()
-           ce_list = list()
-    else:
-        loss_list = list()
-        learn_rate = list()
-        dice_list = list()
-        ce_list = list()
-
-
-
-    batch_idx = 200
-    
-    
-    pbar = tqdm(total=n_iter, leave=True)    
-    for ind in range(n_iter):
-        model.train(True)
-        image, label = dataset[batch_idx]
-        image = image.to(device, non_blocking = True)
-        label = label.to(device, non_blocking = True)
-    
-        optimizer.zero_grad(set_to_none=True)
-    
-        output = model(image)        
-        l = loss(output, label)                    
-        l.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 12)
-        optimizer.step()
-        learn_rate.append(sheduler.get_last_lr())
-        sheduler.step(l)        
-        loss_list.append(l.item()) 
-        model.eval()
-        with torch.no_grad():
-            target = model(image)
-            dice_list.append(loss.diceCoeff(target, label).item())
-            ce_list.append(loss.ceCoeff(target, label).item())
-        pbar.update(1)       
-    pbar.close()    
-    
-    state = {'epoch': ind,
-             'model': model.state_dict(),
-             'optimizer': optimizer.state_dict(),
-             'sheduler':sheduler.state_dict(),
-             'loss_list': loss_list,
-             'learn_rate':learn_rate,
-             'dice_list':dice_list,
-             'ce_list':ce_list           
-            }
-    torch.save(state, "lung.pt")
-
-
-    traced = torch.jit.trace(model.to('cpu'), torch.rand(image.shape))
-    traced.save("traced_lung.pt")
-
-    model.eval()
-    with torch.no_grad():
-        image, label = dataset[batch_idx]
-        out = softmax_helper_dim1(model(image))
-        for i in range(1, 7):
-            plt.subplot(2, 6, i)
-            plt.imshow(out[0,i-1, :, :])
-        plt.subplot(2, 6, 7)
-        plt.imshow(image[0,0,:,:])
-        plt.subplot(2, 6, 8)
-        plt.imshow(label[0,0,:,:])
-        plt.subplot(2, 6, 9)
-        plt.plot(loss_list)
-        plt.subplot(2, 6, 10)
-        plt.plot(learn_rate)
-        plt.subplot(2, 6, 11)
-        plt.plot(dice_list)        
-        plt.subplot(2, 6, 12)
-        plt.plot(ce_list) 
-        plt.tight_layout()
-        plt.savefig("lung_{}.png".format(len(loss_list)), dpi=600)
-        plt.show()
-
 
 
 if __name__=='__main__':
     dataset_path = r"C:\Users\ander\totseg"
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
-    #test_train(data_path = dataset_path, device='cuda')
-
-
     
-    batch_size=24
+
+    batch_size=30
     start_train(n_epochs = 150, device='cuda', batch_size=batch_size, load_model=True, data_path = dataset_path)
     #start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:
-        dataset = TotSegDataset2D(dataset_path, train=True, batch_size=batch_size)
+        volumes = list([10,11,12,13,14])
+        dataset=TotSegDataset2D(dataset_path, train=False, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
         predict(dataset)
 
 
