@@ -15,8 +15,8 @@ from matplotlib import pylab as plt
 
 
 class TotSegDataset2D(Dataset):
-    def __init__(self, data_dir: str, train=True, batch_size=4, volumes=None, rewrite_labels = False , dtype=torch.float32):  
-        self._train_shape = (256, 256)     
+    def __init__(self, data_dir: str, train=True, batch_size=4, volumes=None, rewrite_labels = False, train_shape=(256, 256),  dtype=torch.float32):  
+        self._train_shape = train_shape    
         self._batch_size = batch_size   
         self._dtype = dtype
 
@@ -95,7 +95,7 @@ class TotSegDataset2D(Dataset):
 
         return splits
 
-    def _load_labels(self, path, overwrite=False):
+    def _prepare_labels_worker(self, path, overwrite=False):
         label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))        
     
         if not label_exists or overwrite:            
@@ -105,21 +105,17 @@ class TotSegDataset2D(Dataset):
             arr = np.zeros(ct.shape, dtype=np.uint8)
             for ind, (key, name) in enumerate(tqdm(d, leave=False)):
                 sub = np.asarray(nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).dataobj, dtype=None)
-                arr[sub.nonzero()]=ind+1
-            #arr = np.array([nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).get_fdata().astype(np.uint8) for key, name in d], dtype=np.uint8)            
+                arr[sub.nonzero()]=ind+1            
             im = nibabel.Nifti1Image(arr, ct.affine)
             im.set_data_dtype(np.uint8)
             nibabel.save(im, os.path.join(path, "labels.nii.gz"))           
             return True
         return False
 
-    def prepare_labels(self, overwrite=False):
-        """Make labels array"""
-        print("Making labels arrays")
-        
+    def prepare_labels(self, overwrite=False):                
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:                        
             pbar = tqdm(total=len(self._item_paths))
-            futures = list([executor.submit(self._load_labels, p, overwrite) for p in self._item_paths])
+            futures = list([executor.submit(self._prepare_labels_worker, p, overwrite) for p in self._item_paths])
             for res in concurrent.futures.as_completed(futures):            
                 pbar.update(1)
             pbar.close()
@@ -167,23 +163,6 @@ class TotSegDataset2D(Dataset):
                 self.shuffle()
             yield from self.__iter__()
         
-
-
-    def get_volumes(self):
-        vols = dict()
-        for i in range(1, 118):
-            vols[i]=0
-        for path in tqdm(self._item_paths):
-            try:
-                _ = os.path.exists(os.path.join(path, "labels.nii.gz"))
-            except:
-                raise ValueError("Label do not exists")
-            else:
-                vol = nibabel.load(os.path.join(path, "labels.nii.gz")).get_fdata().astype(np.uint8)
-                for key in list(vols.keys()):
-                    vols[key]+= (vol == key).sum()
-        return vols
-
     def __getitem__(self, idx):
         batch = self._item_splits[idx]
         image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=self._dtype)        
@@ -209,31 +188,46 @@ class TotSegDataset2D(Dataset):
                 for ind, v in self._volumes.items():
                     label_corr.masked_fill_(label_idx == v, ind)                    
                 label_idx=label_corr
-                        
-
             #label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
             #label.scatter_(1, label_idx, 1)            
-            
         return image, label_idx
 
+    @staticmethod
+    def _calculate_statistics_worker(pat_path, pat="all"):
+        seg = np.asarray(nibabel.load(os.path.join(pat_path, "labels.nii.gz")).dataobj)
+        vals, count = np.unique(seg, return_counts=True)
+        if len(vals)>0:
+            if vals[0] ==0:
+                vals=vals[1:]
+                count=count[1:]
+        data_c = dict({i:[0,]*3 for i in VOLUMES.keys()})
+        for v, c in zip(vals, count):
+            data_c[v][0]=c
+        ct = np.asarray(nibabel.load(os.path.join(pat_path, "ct.nii.gz")).dataobj)                    
+        for v in vals:
+            ct_sub = ct[seg == v]
+            data_c[v][1]=ct_sub.mean()
+        return pat, data_c
 
-    def del_labels(self):
-        for pat in tqdm(self._item_paths):
-            dp = os.path.join(pat, 'labels.nii.gz')
-            if os.path.exists(dp):
-                os.remove(dp)
+    def calculate_statistics(self):
+        n_cont = os.cpu_count()      
+        data = {'Patient': list(), 'Index':list(), 'Volume':list(), 'Mean':list()}
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_cont) as executor: 
+            pbar = tqdm(total=len(self._item_paths))
+            futures = list([executor.submit(self._calculate_statistics_worker, p, str(ind)) for ind, p in enumerate(self._item_paths)])
+            for res in concurrent.futures.as_completed(futures):
+                pat, d = res.result()
+                for k, v in d.items():
+                    data['Patient'].append(pat)
+                    data['Index'].append(k)
+                    data['Volume'].append(v[0])
+                    data['Mean'].append(v[1])
 
- 
-    def patient_segments(self):
-        data = list()
-        for s in self._item_splits:
-            for b in s:
-                data.append((b[0], b[1], b[2]))
-        data = list(set(data))
-        data.sort(key=lambda x: x[2])
-        data.sort(key=lambda x: x[1])
-        data.sort(key=lambda x: x[0])
-        return data
+                pbar.update(1)
+            pbar.close()
+        return data       
+
 
 if __name__ == '__main__':        
     #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
@@ -250,9 +244,18 @@ if __name__ == '__main__':
     #t.prepare_labels()
     #t.del_labels()    
     
-    
-    
     if True:
+        import seaborn as sns
+        import pandas as pd
+        data = d.calculate_statistics()
+        df = pd.DataFrame(data)
+        sns.violinplot(data=df, x="Index", y="Mean",
+               inner="quart", fill=False,
+               )
+        plt.show()
+    
+    
+    if False:
         d.shuffle()
         for imIdx in range(len(d)):
             image, label = d[imIdx]
