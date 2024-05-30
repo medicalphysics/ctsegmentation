@@ -8,7 +8,7 @@ import random
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
-from segmentation_volumes import VOLUMES
+from segmentation_volumes import VOLUMES, VOLUMES_DXMC
 import nibabel
 import math
 from matplotlib import pylab as plt
@@ -43,7 +43,7 @@ class TotSegDataset2D(Dataset):
 
     def shuffle(self):
         random.shuffle(self._item_splits)              
-   
+
     def _calculate_data_splits(self, volumes=None): 
         shape = [nibabel.load(os.path.join(p, "ct.nii.gz")).shape for p in self._item_paths]        
 
@@ -97,15 +97,15 @@ class TotSegDataset2D(Dataset):
 
     def _prepare_labels_worker(self, path, overwrite=False):
         label_exists = os.path.exists(os.path.join(path, "labels.nii.gz"))        
-    
-        if not label_exists or overwrite:            
-            d = list([(key, name) for key, name in VOLUMES.items()])
-            d.sort(key = lambda x: x[0])
+        if not label_exists or overwrite:                        
             ct = nibabel.load(os.path.join(path, "ct.nii.gz"))
             arr = np.zeros(ct.shape, dtype=np.uint8)
-            for ind, (key, name) in enumerate(tqdm(d, leave=False)):
-                sub = np.asarray(nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).dataobj, dtype=None)
-                arr[sub.nonzero()]=ind+1            
+            for key, value in tqdm(VOLUMES_DXMC.items(), leave=False):
+                _, idx = value
+                for i in idx:
+                    name = VOLUMES[i]
+                    sub = np.asarray(nibabel.load(os.path.join(path, "segmentations", "{}.nii.gz".format(name))).dataobj, dtype=np.uint8)
+                    arr[sub.nonzero()] = key            
             im = nibabel.Nifti1Image(arr, ct.affine)
             im.set_data_dtype(np.uint8)
             nibabel.save(im, os.path.join(path, "labels.nii.gz"))           
@@ -119,7 +119,6 @@ class TotSegDataset2D(Dataset):
             for res in concurrent.futures.as_completed(futures):            
                 pbar.update(1)
             pbar.close()
-
 
     def _find_max_label(self):
         paths = list([os.path.join(p, 'labels.nii.gz') for p in self._item_paths])
@@ -137,12 +136,12 @@ class TotSegDataset2D(Dataset):
 
     def __len__(self):
         return len(self._item_splits)
-     
+
     @staticmethod
     def _iter_worker(data, queue):
         n_cont = os.cpu_count()//2      
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_cont) as executor:  
-        #with concurrent.futures.ProcessPoolExecutor(max_workers=n_cont) as executor:            
+            # with concurrent.futures.ProcessPoolExecutor(max_workers=n_cont) as executor:
             for i in range(len(data)):
                 queue.put(executor.submit(data.__getitem__, i))        
         queue.join()
@@ -156,19 +155,18 @@ class TotSegDataset2D(Dataset):
             q.task_done()                    
             yield f        
         t.join()
-    
+
     def iter_ever(self, shuffle=True):
         while True:
             if shuffle:
                 self.shuffle()
             yield from self.__iter__()
-        
+
     def __getitem__(self, idx):
         batch = self._item_splits[idx]
         image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=self._dtype)        
         label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.uint8)
-        with torch.no_grad():            
-            #label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
+        with torch.no_grad():                      
             pat = ""
             for ind, (pat_id, xbeg, ybeg, zbeg) in enumerate(batch):
                 if self._item_paths[pat_id] != pat:
@@ -188,78 +186,67 @@ class TotSegDataset2D(Dataset):
                 for ind, v in self._volumes.items():
                     label_corr.masked_fill_(label_idx == v, ind)                    
                 label_idx=label_corr
-            #label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
-            #label.scatter_(1, label_idx, 1)            
+            # label = torch.zeros((self._batch_size, self._label_tensor_dim) + self._train_shape, dtype=self._dtype)
+            # label.scatter_(1, label_idx, 1)
         return image, label_idx
 
     @staticmethod
-    def _calculate_statistics_worker(pat_path, pat="all"):
-        seg = np.asarray(nibabel.load(os.path.join(pat_path, "labels.nii.gz")).dataobj)
-        vals, count = np.unique(seg, return_counts=True)
-        if len(vals)>0:
-            if vals[0] ==0:
-                vals=vals[1:]
-                count=count[1:]
-        data_c = dict({i:[0,]*3 for i in VOLUMES.keys()})
-        for v, c in zip(vals, count):
-            data_c[v][0]=c
-        ct = np.asarray(nibabel.load(os.path.join(pat_path, "ct.nii.gz")).dataobj)                    
-        for v in vals:
-            ct_sub = ct[seg == v]
-            data_c[v][1]=ct_sub.mean()
-        return pat, data_c
+    def _calculate_statistics_worker(pat_path, max_ind=62):
+        seg = np.asarray(nibabel.load(os.path.join(pat_path, "labels.nii.gz")).dataobj, dtype=np.uint8)
+        bins = np.arange(max_ind+1) - 0.5
+        h, _ = np.histogram(seg, bins=bins, range=(0, max_ind+0.5))
+        return h
 
     def calculate_statistics(self):
-        n_cont = os.cpu_count()      
-        data = {'Patient': list(), 'Index':list(), 'Volume':list(), 'Mean':list()}
-        
+        n_cont = os.cpu_count()            
+        volumes_per_pat = list()
+        max_ind = max([k for k in VOLUMES_DXMC.keys()])
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_cont) as executor: 
             pbar = tqdm(total=len(self._item_paths))
-            futures = list([executor.submit(self._calculate_statistics_worker, p, str(ind)) for ind, p in enumerate(self._item_paths)])
+            futures = list([executor.submit(self._calculate_statistics_worker, p, max_ind) for p in self._item_paths])
             for res in concurrent.futures.as_completed(futures):
-                pat, d = res.result()
-                for k, v in d.items():
-                    data['Patient'].append(pat)
-                    data['Index'].append(k)
-                    data['Volume'].append(v[0])
-                    data['Mean'].append(v[1])
-
+                hist = res.result()
+                volumes_per_pat.append(hist)
                 pbar.update(1)
-            pbar.close()
-        return data       
+            pbar.close()        
+        return np.array(volumes_per_pat).sum(axis=0)        
 
 
 if __name__ == '__main__':        
-    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
-    #d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
-    #d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
-    d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
-    
-    #d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
-    #d.prepare_labels()
-    #d.del_labels()
+    # d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
+    # d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
+    # d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
+    #d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
 
-    
-    #t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
-    #t.prepare_labels()
-    #t.del_labels()    
-    
-    if True:
-        import seaborn as sns
-        import pandas as pd
-        data = d.calculate_statistics()
-        df = pd.DataFrame(data)
-        sns.violinplot(data=df, x="Index", y="Mean",
-               inner="quart", fill=False,
-               )
-        plt.show()
-    
-    
+    d = TotSegDataset2D(
+        r"C:\Users\ander\totseg",
+        train=False,
+        volumes=None,
+        rewrite_labels=True,
+        batch_size=8,
+    )
+
+    d = TotSegDataset2D(
+        r"C:\Users\ander\totseg",
+        train=True,
+        volumes=None,
+        rewrite_labels=True,
+        batch_size=8,
+    )
+
+    # d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
+    # d.prepare_labels()
+    # d.del_labels()
+
+    # t = TotSegDataset(r"D:\totseg\Totalsegmentator_dataset_v201", train=True)
+    # t.prepare_labels()
+    # t.del_labels()
+
     if False:
         d.shuffle()
         for imIdx in range(len(d)):
             image, label = d[imIdx]
-            
+
             if len(image.shape) == 5:
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, i+1)
@@ -277,9 +264,8 @@ if __name__ == '__main__':
                     plt.imshow(image[i,0,:,:], cmap='bone', vmin=0,vmax=1)
                 for i in range(d._batch_size):
                     plt.subplot(2, d._batch_size, d._batch_size+i+1)
-                    #plt.imshow(label_index[i,0,:,:])
+                    # plt.imshow(label_index[i,0,:,:])
                     plt.imshow(label[i,0,:,:])
                 plt.tight_layout()
                 plt.tight_layout()
                 plt.show()
-            
