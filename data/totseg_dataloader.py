@@ -166,8 +166,7 @@ class TotSegDataset2D(Dataset):
         batch = self._item_splits[idx]
         image = torch.full((self._batch_size, 1) + self._train_shape,-1024, dtype=self._dtype)        
         label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.uint8)
-        with torch.no_grad():            
-            # label_idx = torch.zeros((self._batch_size, 1) + self._train_shape, dtype=torch.int64)
+        with torch.no_grad():                      
             pat = ""
             for ind, (pat_id, xbeg, ybeg, zbeg) in enumerate(batch):
                 if self._item_paths[pat_id] != pat:
