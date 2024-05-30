@@ -195,7 +195,7 @@ class TotSegDataset2D(Dataset):
     def _calculate_statistics_worker(pat_path, max_ind=62):
         seg = np.asarray(nibabel.load(os.path.join(pat_path, "labels.nii.gz")).dataobj, dtype=np.uint8)
         bins = np.arange(max_ind+1) - 0.5
-        h, _ = np.histogram(seg, bins=bins, range(0, max_ind+0.5))
+        h, _ = np.histogram(seg, bins=bins, range=(0, max_ind+0.5))
         return h
 
     def calculate_statistics(self):
