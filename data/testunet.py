@@ -119,8 +119,14 @@ def start_train(
         volumes=volumes,
         dtype=torch.float32,
     )
-    # dataset = TotSegDataset2D(data_path, train=True, batch_size=batch_size, volumes=volumes, dtype = torch.float32)
-    dataset = dataset_val
+    dataset = TotSegDataset2D(
+        data_path,
+        train=True,
+        batch_size=batch_size,
+        volumes=volumes,
+        dtype=torch.float32,
+    )
+    # dataset = dataset_val
 
     model = get_model(dataset._label_tensor_dim).to(device)
 
