@@ -241,153 +241,144 @@ VOLUMES_DXMC = {
             25,
         ],
     ),
-    23: (
-        "vertebrae_S1",
-        [
-            26,
-        ],
-    ),
-    24: ("vertebrae_L", [27, 28, 29, 30, 31]),
-    25: ("vertebrae_T", [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43]),
-    26: ("vertebrae_C", [44, 45, 46, 47, 48, 49, 50]),
-    27: (
+    23: ("vertebrae_SL", [26, 27, 28, 29, 30, 31]),
+    24: ("vertebrae_T", [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43]),
+    25: ("vertebrae_C", [44, 45, 46, 47, 48, 49, 50]),
+    26: (
         "heart",
         [
             51,
         ],
     ),
-    28: (
+    27: (
         "aorta",
         [
             52,
         ],
     ),
-    29: (
+    28: (
         "pulmonary_vein",
         [
             53,
         ],
     ),
-    30: (
+    29: (
         "brachiocephalic_trunk",
         [
             54,
         ],
     ),
-    31: (
+    30: (
         "subclavian_artery_right",
         [
             55,
         ],
     ),
-    32: (
+    31: (
         "subclavian_artery_left",
         [
             56,
         ],
     ),
-    33: (
+    32: (
         "common_carotid_artery_right",
         [
             57,
         ],
     ),
-    34: (
+    33: (
         "common_carotid_artery_left",
         [
             58,
         ],
     ),
-    35: (
+    34: (
         "brachiocephalic_vein_left",
         [
             59,
         ],
     ),
-    36: (
+    35: (
         "brachiocephalic_vein_right",
         [
             60,
         ],
     ),
-    37: (
+    36: (
         "atrial_appendage_left",
         [
             61,
         ],
     ),
-    38: ("vena_cava", [62, 63]),
-    39: (
+    37: ("vena_cava", [62, 63]),
+    38: (
         "portal_vein_and_splenic_vein",
         [
             64,
         ],
     ),
-    40: (
+    39: (
         "iliac_artery_left",
         [
             65,
         ],
     ),
-    41: (
+    40: (
         "iliac_artery_right",
         [
             66,
         ],
     ),
-    42: (
+    41: (
         "iliac_vena_left",
         [
             67,
         ],
     ),
-    43: (
+    42: (
         "iliac_vena_right",
         [
             68,
         ],
     ),
-    44: (
+    43: (
         "humerus",
         [
             69,
             70,
         ],
     ),
-    45: ("scapula", [71, 72]),
-    46: (
+    44: ("scapula", [71, 72]),
+    45: (
         "clavicula",
         [
             73,
             74,
         ],
     ),
-    47: (
-        "femur",
+    46: (
+        "femur_left",
         [
             75,
+        ],
+    ),
+    47: (
+        "femur_right",
+        [
             76,
         ],
     ),
     48: (
-        "hip_left",
-        [
-            77,
-        ],
+        "hip",
+        [77, 78],
     ),
     49: (
-        "hip_right",
-        [
-            78,
-        ],
-    ),
-    50: (
         "spinal_cord",
         [
             79,
         ],
     ),
-    51: (
+    50: (
         "gluteus_left",
         [
             80,
@@ -395,7 +386,7 @@ VOLUMES_DXMC = {
             84,
         ],
     ),
-    52: (
+    51: (
         "gluteus_right",
         [
             81,
@@ -403,56 +394,48 @@ VOLUMES_DXMC = {
             85,
         ],
     ),
-    53: (
+    52: (
         "autochthon_left",
         [
             86,
         ],
     ),
-    54: (
+    53: (
         "autochthon_right",
         [
             87,
         ],
     ),
-    55: (
+    54: (
         "iliopsoas_left",
         [
             88,
         ],
     ),
-    56: (
+    55: (
         "iliopsoas_right",
         [
             89,
         ],
     ),
-    57: (
+    56: (
         "brain",
         [
             90,
         ],
     ),
-    58: (
+    57: (
         "skull",
         [
             91,
         ],
     ),
-    59: ("rib_left", [92, 93, 94, 95, 96, 97, 98.0, 99, 100, 101, 102, 103]),
-    60: ("rib_right", [104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115]),
-    61: (
+    58: ("rib_left", [92, 93, 94, 95, 96, 97, 98.0, 99, 100, 101, 102, 103]),
+    59: ("rib_right", [104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115]),
+    60: (
         "sternum",
         [
             116,
         ],
     ),
-    62: (
-        "costal_cartilages",
-        [
-            117,
-        ],
-    ),
 }
-
-

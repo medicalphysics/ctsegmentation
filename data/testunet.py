@@ -198,7 +198,9 @@ def save_model(data):
     state = torch.load("model.pt", map_location=torch.device("cpu"))
     model.load_state_dict(state["model"])
     model.eval()
-    model_input_shape = tuple((k if i != 1 else 1 for i, k in enumerate(data.batch_shape())))
+    model_input_shape = tuple(
+        (k if i != 1 else 1 for i, k in enumerate(data.batch_shape()))
+    )
     trace = torch.jit.trace(model, torch.rand(model_input_shape, dtype=torch.float32))
     freezed = torch.jit.freeze(trace)
     freezed.save("freezed_model.pt")
@@ -218,7 +220,7 @@ def predict(data):
             seg = np.zeros(image.shape[2:])
             for i in range(1, out.shape[1]):
                 s = np.squeeze(out[0, i, :, :])
-                seg[s > 0.5] = i            
+                seg[s > 0.5] = i
             plt.subplot(1, 3, 1)
             plt.imshow(image[0, 0, :, :])
             plt.subplot(1, 3, 2)
