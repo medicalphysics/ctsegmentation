@@ -52,3 +52,9 @@
 data/utilities/__pycache__/*
 data/__pycache__/*
 data/model.pt
+data/model1.pt
+data/model2.pt
+data/model2.pt.png
+data/patstats.csv
+data/train.png
+data/train1.png
