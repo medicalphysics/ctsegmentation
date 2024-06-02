@@ -65,7 +65,7 @@ def validate(model, data, loss, device):
     return running_vloss / len(data), running_dice / len(data)
 
 
-def plot_loss(loss, lr, dice):
+def plot_loss(loss, lr, dice, name="train"):
     for ind, (v, l) in enumerate(
         zip([loss, lr, dice], ["Validation Loss", "Learning rate", "Dice Score"])
     ):
@@ -74,7 +74,7 @@ def plot_loss(loss, lr, dice):
         plt.xlabel("Batch nr")
         plt.ylabel(l)
     plt.tight_layout()
-    plt.savefig("train.png", dpi=600)
+    plt.savefig(name + ".png", dpi=600)
     plt.clf()
 
 
@@ -106,11 +106,24 @@ def start_train(
     n_epochs=150,
     device="cpu",
     batch_size=4,
+    part=1,
     load_model=True,
     load_only_model=False,
     data_path=None,
 ):
-    volumes = list([10, 11, 12, 13, 14])
+    name = "model.pt"
+    if part == 1:
+        volumes = list(range(1, 16))
+        name = "model1.pt"
+    elif part == 2:
+        volumes = list(range(16, 31))
+        name = "model2.pt"
+    elif part == 3:
+        volumes = list(range(31, 46))
+        name = "model3.pt"
+    elif part == 4:
+        volumes = list(range(46, 61))
+        name = "model4.pt"
 
     dataset_val = TotSegDataset2D(
         data_path,
@@ -140,7 +153,7 @@ def start_train(
         nesterov=True,
     )
     sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=5, cooldown=0, factor=0.2, threshold=0.01
+        optimizer, "min", patience=3, cooldown=5, factor=0.2, threshold=0
     )
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
@@ -156,8 +169,8 @@ def start_train(
     min_val_loss = 1e9
 
     if load_model:
-        if os.path.exists("model.pt"):
-            state = torch.load("model.pt")
+        if os.path.exists(name):
+            state = torch.load(name)
             model.load_state_dict(state["model"])
             if not load_only_model:
                 optimizer.load_state_dict(state["optimizer"])
@@ -187,10 +200,10 @@ def start_train(
                 "dice_score": dice_score,
                 "lr_rate": lr_rate,
             }
-            torch.save(state, "model.pt")
+            torch.save(state, name)
             # traced_script_module = torch.jit.trace(model.to('cpu'), torch.rand(dataset.batch_shape(), dtype=torch.float32))
             # traced_script_module.save("traced_model.pt")
-        plot_loss(validation_loss, lr_rate, dice_score)
+        plot_loss(validation_loss, lr_rate, dice_score, name)
 
 
 def save_model(data):
@@ -233,13 +246,14 @@ def predict(data):
 
 if __name__ == "__main__":
     dataset_path = r"C:\Users\ander\totseg"
-    # dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
 
     batch_size = 28
     start_train(
         n_epochs=150,
         device="cuda",
         batch_size=batch_size,
+        part=2,
         load_model=True,
         load_only_model=False,
         data_path=dataset_path,

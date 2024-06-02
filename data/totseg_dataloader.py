@@ -269,7 +269,7 @@ class TotSegDataset2D(Dataset):
                 data.append((pat_id, l, vol, sct.mean(), sct.std()))
         return data
 
-    def calculate_statistics(self, write=False):
+    def calculate_statistics(self, write=True):
         n_cont = os.cpu_count()
         data = list()
         max_ind = max([k for k in VOLUMES_DXMC.keys()])
@@ -300,20 +300,21 @@ if __name__ == "__main__":
     # d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
     # d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
 
-    d = TotSegDataset2D(
-        r"C:\Users\ander\totseg",
+    d1 = TotSegDataset2D(
+        r"D:\totseg\Totalsegmentator_dataset_v201",
         train=False,
         volumes=None,
         rewrite_labels=True,
         batch_size=8,
     )
-    d = TotSegDataset2D(
-        r"C:\Users\ander\totseg",
+    d2 = TotSegDataset2D(
+        r"D:\totseg\Totalsegmentator_dataset_v201",
         train=True,
         volumes=None,
         rewrite_labels=True,
         batch_size=8,
     )
+    d2.calculate_statistics()
 
     # d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     # d.prepare_labels()
