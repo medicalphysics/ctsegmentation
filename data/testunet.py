@@ -206,22 +206,22 @@ def start_train(
         plot_loss(validation_loss, lr_rate, dice_score, name)
 
 
-def save_model(data):
-    model = get_model(data._label_tensor_dim)
-    state = torch.load("model.pt", map_location=torch.device("cpu"))
+def save_model(data, part=1):
+    model = get_model(data._label_tensor_dim)    
+    state = torch.load("model{}.pt".format(part), map_location=torch.device("cpu"))
     model.load_state_dict(state["model"])
-    model.eval()
-    model_input_shape = tuple(
-        (k if i != 1 else 1 for i, k in enumerate(data.batch_shape()))
-    )
-    trace = torch.jit.trace(model, torch.rand(model_input_shape, dtype=torch.float32))
+    full_model = torch.nn.Sequential(model, softmax_helper_dim1)
+    full_model.eval()
+    model_input_shape = data.batch_shape()
+
+    trace = torch.jit.trace(full_model, torch.rand(model_input_shape, dtype=torch.float32))
     freezed = torch.jit.freeze(trace)
-    freezed.save("freezed_model.pt")
+    freezed.save("freezed_full_model{}.pt".format(part))
 
 
-def predict(data):
+def predict(data, part=1):
     model = get_model(data._label_tensor_dim)
-    state = torch.load("model.pt", map_location=torch.device("cpu"))
+    state = torch.load("model{}.pt".format(part), map_location=torch.device("cpu"))
     model.load_state_dict(state["model"])
     model.eval()
     with torch.no_grad():
@@ -244,20 +244,23 @@ def predict(data):
             plt.show()
 
 
+def print_model(dataset_path):
+    d = TotSegDataset2D(dataset_path, train=True, batch_size=16, )
+    model = get_model(16)
+    data, _ = d[0]
+
+    from torchview import draw_graph
+    
+    model_graph = draw_graph(model, input_size=data.shape, device="meta", save_graph=True, graph_dir='LR', file_format='pdf')
+    model_graph.visual_graph
+
+
 if __name__ == "__main__":
     dataset_path = r"C:\Users\ander\totseg"
-    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
-
+    #dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 28
-    start_train(
-        n_epochs=150,
-        device="cuda",
-        batch_size=batch_size,
-        part=2,
-        load_model=True,
-        load_only_model=False,
-        data_path=dataset_path,
-    )
+    
+    # start_train(        n_epochs=150,        device="cuda",        batch_size=batch_size,        part=2,        load_model=True,        load_only_model=False,        data_path=dataset_path,    )
     # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:

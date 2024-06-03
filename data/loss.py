@@ -6,8 +6,7 @@ from torch import nn
 
 
 def softmax_helper_dim1(x: torch.Tensor) -> torch.Tensor:    
-    return torch.softmax(x, 1)
-    #return torch.sigmoid(x)
+    return torch.softmax(x, 1)   
 
 def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
     """
