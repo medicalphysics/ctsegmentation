@@ -206,19 +206,21 @@ def start_train(
         plot_loss(validation_loss, lr_rate, dice_score, name)
 
 
-def save_model(data, part=1):
-    model = get_model(data._label_tensor_dim)
-    state = torch.load("model{}.pt".format(part), map_location=torch.device("cpu"))
-    model.load_state_dict(state["model"])
-    full_model = torch.nn.Sequential(model, softmax_helper_dim1)
-    full_model.eval()
-    model_input_shape = data.batch_shape()
-
-    trace = torch.jit.trace(
-        full_model, torch.rand(model_input_shape, dtype=torch.float32)
+def save_model(input_shape, out_channel_size=16, part=1):
+    model = get_model(out_channel_size)
+    state = torch.load(
+        "model{}.pt".format(part),
+        map_location=torch.device("cpu"),
     )
-    freezed = torch.jit.freeze(trace)
-    freezed.save("freezed_full_model{}.pt".format(part))
+    model.load_state_dict(state["model"])
+    full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
+    full_model.eval()
+
+    # full_model = torch.compile(full_model)
+    # trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
+    trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
+    trace = torch.jit.freeze(trace)
+    trace.save("freezed_model{}.pt".format(part))
 
 
 def predict(data, part=1):
