@@ -153,7 +153,7 @@ def start_train(
         nesterov=True,
     )
     sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=3, cooldown=5, factor=0.2, threshold=0
+        optimizer, "min", patience=2, cooldown=3, factor=0.2, threshold=0.01
     )
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
@@ -207,14 +207,16 @@ def start_train(
 
 
 def save_model(data, part=1):
-    model = get_model(data._label_tensor_dim)    
+    model = get_model(data._label_tensor_dim)
     state = torch.load("model{}.pt".format(part), map_location=torch.device("cpu"))
     model.load_state_dict(state["model"])
     full_model = torch.nn.Sequential(model, softmax_helper_dim1)
     full_model.eval()
     model_input_shape = data.batch_shape()
 
-    trace = torch.jit.trace(full_model, torch.rand(model_input_shape, dtype=torch.float32))
+    trace = torch.jit.trace(
+        full_model, torch.rand(model_input_shape, dtype=torch.float32)
+    )
     freezed = torch.jit.freeze(trace)
     freezed.save("freezed_full_model{}.pt".format(part))
 
@@ -245,22 +247,41 @@ def predict(data, part=1):
 
 
 def print_model(dataset_path):
-    d = TotSegDataset2D(dataset_path, train=True, batch_size=16, )
+    d = TotSegDataset2D(
+        dataset_path,
+        train=True,
+        batch_size=16,
+    )
     model = get_model(16)
     data, _ = d[0]
 
     from torchview import draw_graph
-    
-    model_graph = draw_graph(model, input_size=data.shape, device="meta", save_graph=True, graph_dir='LR', file_format='pdf')
+
+    model_graph = draw_graph(
+        model,
+        input_size=data.shape,
+        device="meta",
+        save_graph=True,
+        graph_dir="LR",
+        file_format="pdf",
+    )
     model_graph.visual_graph
 
 
 if __name__ == "__main__":
-    dataset_path = r"C:\Users\ander\totseg"
-    #dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    # dataset_path = r"C:\Users\ander\totseg"
+    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 28
-    
-    # start_train(        n_epochs=150,        device="cuda",        batch_size=batch_size,        part=2,        load_model=True,        load_only_model=False,        data_path=dataset_path,    )
+
+    start_train(
+        n_epochs=150,
+        device="cuda",
+        batch_size=batch_size,
+        part=3,
+        load_model=True,
+        load_only_model=False,
+        data_path=dataset_path,
+    )
     # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:
