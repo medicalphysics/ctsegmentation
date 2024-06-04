@@ -1,12 +1,11 @@
-
-
 from typing import Any, Optional, Tuple, Callable
 import torch
 from torch import nn
 
 
-def softmax_helper_dim1(x: torch.Tensor) -> torch.Tensor:    
-    return torch.softmax(x, 1)   
+def softmax_helper_dim1(x: torch.Tensor) -> torch.Tensor:
+    return torch.softmax(x, 1)
+
 
 def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
     """
@@ -41,7 +40,9 @@ def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
 
     if mask is not None:
         with torch.no_grad():
-            mask_here = torch.tile(mask, (1, tp.shape[1], *[1 for _ in range(2, tp.ndim)]))
+            mask_here = torch.tile(
+                mask, (1, tp.shape[1], *[1 for _ in range(2, tp.ndim)])
+            )
         tp *= mask_here
         fp *= mask_here
         fn *= mask_here
@@ -55,10 +56,10 @@ def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
         # tn = torch.stack(tuple(x_i * mask[:, 0] for x_i in torch.unbind(tn, dim=1)), dim=1)
 
     if square:
-        tp = tp ** 2
-        fp = fp ** 2
-        fn = fn ** 2
-        tn = tn ** 2
+        tp = tp**2
+        fp = fp**2
+        fn = fn**2
+        tn = tn**2
 
     if len(axes) > 0:
         tp = tp.sum(dim=axes, keepdim=False)
@@ -69,13 +70,13 @@ def get_tp_fp_fn_tn(net_output, gt, axes=None, mask=None, square=False):
     return tp, fp, fn, tn
 
 
-
 class RobustCrossEntropyLoss(nn.CrossEntropyLoss):
     """
     this is just a compatibility layer because my target tensor is float and has an extra dimension
 
     input must be logits, not probabilities!
     """
+
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         if target.ndim == input.ndim:
             assert target.shape[1] == 1
@@ -84,10 +85,15 @@ class RobustCrossEntropyLoss(nn.CrossEntropyLoss):
 
 
 class SoftDiceLoss(nn.Module):
-    def __init__(self, apply_nonlin: Callable = None, batch_dice: bool = False, do_bg: bool = True, smooth: float = 1.,
-                  clip_tp: float = None):
-        """
-        """
+    def __init__(
+        self,
+        apply_nonlin: Callable = None,
+        batch_dice: bool = False,
+        do_bg: bool = True,
+        smooth: float = 1.0,
+        clip_tp: float = None,
+    ):
+        """ """
         super(SoftDiceLoss, self).__init__()
 
         self.do_bg = do_bg
@@ -95,7 +101,6 @@ class SoftDiceLoss(nn.Module):
         self.apply_nonlin = apply_nonlin
         self.smooth = smooth
         self.clip_tp = clip_tp
-        
 
     def forward(self, x, y, loss_mask=None):
         shp_x = x.shape
@@ -108,10 +113,10 @@ class SoftDiceLoss(nn.Module):
         if self.apply_nonlin is not None:
             x = self.apply_nonlin(x)
 
-        tp, fp, fn, _ = get_tp_fp_fn_tn(x, y, axes, loss_mask, False)        
+        tp, fp, fn, _ = get_tp_fp_fn_tn(x, y, axes, loss_mask, False)
 
         if self.clip_tp is not None:
-            tp = torch.clip(tp, min=self.clip_tp , max=None)
+            tp = torch.clip(tp, min=self.clip_tp, max=None)
 
         nominator = 2 * tp
         denominator = 2 * tp + fp + fn
@@ -129,7 +134,13 @@ class SoftDiceLoss(nn.Module):
 
 
 class MemoryEfficientSoftDiceLoss(nn.Module):
-    def __init__(self, apply_nonlin: Callable = None, batch_dice: bool = False, do_bg: bool = True, smooth: float = 1.):
+    def __init__(
+        self,
+        apply_nonlin: Callable = None,
+        batch_dice: bool = False,
+        do_bg: bool = True,
+        smooth: float = 1.0,
+    ):
         """
         saves 1.6 GB on Dataset017 3d_lowres
         """
@@ -139,7 +150,6 @@ class MemoryEfficientSoftDiceLoss(nn.Module):
         self.batch_dice = batch_dice
         self.apply_nonlin = apply_nonlin
         self.smooth = smooth
-       
 
     def forward(self, x, y, loss_mask=None):
         if self.apply_nonlin is not None:
@@ -162,7 +172,11 @@ class MemoryEfficientSoftDiceLoss(nn.Module):
             if not self.do_bg:
                 y_onehot = y_onehot[:, 1:]
 
-            sum_gt = y_onehot.sum(axes) if loss_mask is None else (y_onehot * loss_mask).sum(axes)
+            sum_gt = (
+                y_onehot.sum(axes)
+                if loss_mask is None
+                else (y_onehot * loss_mask).sum(axes)
+            )
 
         # this one MUST be outside the with torch.no_grad(): context. Otherwise no gradients for you
         if not self.do_bg:
@@ -175,20 +189,30 @@ class MemoryEfficientSoftDiceLoss(nn.Module):
             intersect = (x * y_onehot * loss_mask).sum(axes)
             sum_pred = (x * loss_mask).sum(axes)
 
-        if self.batch_dice:            
+        if self.batch_dice:
             intersect = intersect.sum(0)
             sum_pred = sum_pred.sum(0)
             sum_gt = sum_gt.sum(0)
 
-        dc = (2 * intersect + self.smooth) / (torch.clip(sum_gt + sum_pred + self.smooth, 1e-8))
+        dc = (2 * intersect + self.smooth) / (
+            torch.clip(sum_gt + sum_pred + self.smooth, 1e-8)
+        )
 
         dc = dc.mean()
-        
+
         return -dc
 
+
 class DC_and_CE_loss(nn.Module):
-    def __init__(self, soft_dice_kwargs, ce_kwargs, weight_ce=1, weight_dice=1, ignore_label=None,
-                 dice_class=MemoryEfficientSoftDiceLoss):
+    def __init__(
+        self,
+        soft_dice_kwargs,
+        ce_kwargs,
+        weight_ce=1,
+        weight_dice=1,
+        ignore_label=None,
+        dice_class=MemoryEfficientSoftDiceLoss,
+    ):
         """
         Weights for CE and Dice do not need to sum to one. You can set whatever you want.
         :param soft_dice_kwargs:
@@ -200,15 +224,15 @@ class DC_and_CE_loss(nn.Module):
         """
         super(DC_and_CE_loss, self).__init__()
         if ignore_label is not None:
-            ce_kwargs['ignore_index'] = ignore_label
+            ce_kwargs["ignore_index"] = ignore_label
 
         self.weight_dice = weight_dice
         self.weight_ce = weight_ce
         self.ignore_label = ignore_label
 
         self.ce = RobustCrossEntropyLoss(**ce_kwargs)
-        self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)        
-    
+        self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)
+
     def diceCoeff(self, net_output, target, ignore_label=None):
         """
         target must be b, c, x, y(, z) with c=1
@@ -217,8 +241,10 @@ class DC_and_CE_loss(nn.Module):
         :return:
         """
         if ignore_label is not None:
-            assert target.shape[1] == 1, 'ignore label is not implemented for one hot encoded target variables ' \
-                                         '(DC_and_CE_loss)'
+            assert target.shape[1] == 1, (
+                "ignore label is not implemented for one hot encoded target variables "
+                "(DC_and_CE_loss)"
+            )
             mask = target != self.ignore_label
             # remove ignore label from target, replace with one of the known labels. It doesn't matter because we
             # ignore gradients in those areas anyway
@@ -233,7 +259,6 @@ class DC_and_CE_loss(nn.Module):
 
     def ceCoeff(self, net_output, target):
         return -self.ce(net_output, target[:, 0])
-        
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor):
         """
@@ -243,8 +268,10 @@ class DC_and_CE_loss(nn.Module):
         :return:
         """
         if self.ignore_label is not None:
-            assert target.shape[1] == 1, 'ignore label is not implemented for one hot encoded target variables ' \
-                                         '(DC_and_CE_loss)'
+            assert target.shape[1] == 1, (
+                "ignore label is not implemented for one hot encoded target variables "
+                "(DC_and_CE_loss)"
+            )
             mask = target != self.ignore_label
             # remove ignore label from target, replace with one of the known labels. It doesn't matter because we
             # ignore gradients in those areas anyway
@@ -254,30 +281,34 @@ class DC_and_CE_loss(nn.Module):
             target_dice = target
             mask = None
 
-        dc_loss = self.dc(net_output, target_dice, loss_mask=mask) \
-            if self.weight_dice != 0 else 0
-        ce_loss = self.ce(net_output, target[:, 0]) \
-            if self.weight_ce != 0 and (self.ignore_label is None or num_fg > 0) else 0
-       
+        dc_loss = (
+            self.dc(net_output, target_dice, loss_mask=mask)
+            if self.weight_dice != 0
+            else 0
+        )
+        ce_loss = (
+            self.ce(net_output, target[:, 0])
+            if self.weight_ce != 0 and (self.ignore_label is None or num_fg > 0)
+            else 0
+        )
+
         result = self.weight_ce * ce_loss + self.weight_dice * dc_loss
         return result
 
 
+if __name__ == "__main__":
 
-
-
-
-    
-if __name__ == '__main__':
-   
     from totseg_dataloader import TotSegDataset2D
 
     d = TotSegDataset2D(r"C:\Users\ander\totseg")
 
-    #loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}, weight_ce=1, weight_dice=1,
+    # loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}, weight_ce=1, weight_dice=1,
     #                      ignore_label=0, dice_class=MemoryEfficientSoftDiceLoss)
-    loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}, weight_ce=1, weight_dice=1,
-                          ignore_label=0, dice_class=SoftDiceLoss)
-
-
-        
+    loss = DC_and_CE_loss(
+        {"batch_dice": True, "smooth": 1e-5, "do_bg": False},
+        {},
+        weight_ce=1,
+        weight_dice=1,
+        ignore_label=0,
+        dice_class=SoftDiceLoss,
+    )
