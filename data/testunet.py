@@ -111,6 +111,7 @@ def start_train(
     load_only_model=False,
     data_path=None,
 ):
+
     name = "model.pt"
     if part == 1:
         volumes = list(range(1, 16))
@@ -139,7 +140,6 @@ def start_train(
         volumes=volumes,
         dtype=torch.float32,
     )
-    # dataset = dataset_val
 
     model = get_model(dataset._label_tensor_dim).to(device)
 
@@ -153,7 +153,7 @@ def start_train(
         nesterov=True,
     )
     sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=2, cooldown=3, factor=0.2, threshold=0.01
+        optimizer, "min", patience=2, cooldown=3, factor=0.2, threshold=0.00
     )
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         part=3,
         load_model=True,
-        load_only_model=False,
+        load_only_model=True,
         data_path=dataset_path,
     )
     # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
