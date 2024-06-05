@@ -16,6 +16,7 @@ foreach(sourcefile ${TEST_SOURCES})
     copy_model_to_binary_dir(${filename} freezed_model1.pt)   
     copy_model_to_binary_dir(${filename} freezed_model2.pt)   
     copy_model_to_binary_dir(${filename} freezed_model3.pt)   
+    copy_model_to_binary_dir(${filename} freezed_model4.pt)   
 
     #Adding torch binaries
     copy_torch_binaries(${filename})

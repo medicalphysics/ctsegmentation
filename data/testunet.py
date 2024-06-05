@@ -207,20 +207,22 @@ def start_train(
 
 
 def save_model(input_shape, out_channel_size=16, part=1):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
     model = get_model(out_channel_size)
     state = torch.load(
-        "model{}.pt".format(part),
+        os.path.join(dir_path, "models", "model{}.pt".format(part)),
         map_location=torch.device("cpu"),
     )
     model.load_state_dict(state["model"])
     full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
     full_model.eval()
+    input = torch.rand(input_shape)
 
     # full_model = torch.compile(full_model)
-    # trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
-    trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
-    trace = torch.jit.freeze(trace)
-    trace.save("freezed_model{}.pt".format(part))
+    trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
+    #trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
+    # trace = torch.jit.freeze(trace)
+    trace.save(os.path.join(dir_path, "models", r"freezed_model{}.pt".format(part)))
 
 
 def predict(data, part=1):
@@ -274,16 +276,21 @@ if __name__ == "__main__":
     # dataset_path = r"C:\Users\ander\totseg"
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 28
-
-    start_train(
-        n_epochs=150,
-        device="cuda",
-        batch_size=batch_size,
-        part=3,
-        load_model=True,
-        load_only_model=True,
-        data_path=dataset_path,
-    )
+    for i in range(1, 5):
+        save_model(
+            (16, 1, 256, 256),
+            out_channel_size=16,
+            part=i,
+        )
+    # start_train(
+    #    n_epochs=150,
+    #    device="cuda",
+    #    batch_size=batch_size,
+    #    part=3,
+    #    load_model=True,
+    #    load_only_model=True,
+    #    data_path=dataset_path,
+    # )
     # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
 
     if False:

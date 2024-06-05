@@ -1,5 +1,7 @@
+#include <array>
 #include <span>
-#include <expected>
+#include <string>
+
 #include <torch/script.h>
 #include <torch/torch.h>
 
@@ -7,39 +9,134 @@ namespace dxmcctseg {
 
 class Segmentator {
 public:
-    Segmentator() = delete;
+    static constexpr std::array<float, 3> spacing()
+    {
+        return { 1.5f, 1.5f, 1.5f };
+    }
+    static constexpr std::array<std::int64_t, 2> modelShape()
+    {
+        return { 256, 256 };
+    }
+    static constexpr std::int64_t batchSize()
+    {
+        return 16;
+    }
+    static constexpr std::int64_t modelSize()
+    {
+        return 16;
+    }
+
+    bool segment(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
+    {
+        const std::array<std::int64_t, 3> sh = {
+            static_cast<std::int64_t>(dataShape[0]),
+            static_cast<std::int64_t>(dataShape[1]),
+            static_cast<std::int64_t>(dataShape[2])
+        };
+        bool success = segmentPart(ct_in, org_out, sh, 1);
+        success = success && segmentPart(ct_in, org_out, sh, 2);
+        success = success && segmentPart(ct_in, org_out, sh, 3);
+        success = success && segmentPart(ct_in, org_out, sh, 4);
+        return success;
+    }
 
 protected:
-std::expected<torch::jit::script::Module, bool> loadModel(int part=0){
-    torch::jit::script::Module module;
-    try {
-        // Deserialize the ScriptModule from a file using torch::jit::load().
-        module = torch::jit::load(model_name);
-    } catch (const c10::Error& e) {
-        std::cout << e.what() << std::endl;
-        std::cerr << "error loading the model\n";
-        return false;
+    std::vector<std::array<std::int64_t, 6>> tensorIndices(const std::array<std::int64_t, 3>& dataShape) const
+    {
+        constexpr auto mSh = modelShape();
+        std::int64_t nx = dataShape[0] / mSh[0];
+        if (nx * mSh[0] < dataShape[0])
+            nx++;
+        std::int64_t ny = dataShape[1] / mSh[1];
+        if (ny * mSh[1] < dataShape[1])
+            ny++;
+        std::int64_t nz = dataShape[2] / batchSize();
+        if (nz * batchSize() < dataShape[2])
+            nz++;
+
+        std::vector<std::array<std::int64_t, 6>> indices;
+        indices.reserve(nx * ny * nz);
+
+        for (std::int64_t k = 0; k < nz; k++)
+            for (std::int64_t j = 0; j < ny; j++)
+                for (std::int64_t i = 0; i < nx; i++) {
+                    auto bIdx = k * ny * nx + j * nx + i;
+                    std::array<std::int64_t, 6> startstop = {
+                        i * mSh[0],
+                        j * mSh[1],
+                        k * batchSize(),
+                        std::min((i + 1) * mSh[0], dataShape[0]),
+                        std::min((j + 1) * mSh[1], dataShape[1]),
+                        std::min((k + 1) * batchSize(), dataShape[2]),
+                    };
+                    indices.push_back(startstop);
+                }
+        return indices;
     }
-    return true;
-}
+
+    bool segmentPart(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::int64_t, 3>& dataShape, std::size_t part = 0)
+    {
+        bool success = loadModel(part);
+        success = success && ct_in.size() == org_out.size();
+        if (!success)
+            return success;
+
+        auto in = torch::zeros({ batchSize(), 1, modelShape()[0], modelShape()[1] }, torch::dtype(torch::kFloat32));
+
+        const auto indices = tensorIndices(dataShape);
+        torch::NoGradGuard no_grad;
+        m_model.eval();
+
+        for (const auto& startstop : indices) {
+            for (auto z = startstop[2]; z < startstop[5]; ++z)
+                for (auto y = startstop[1]; y < startstop[4]; ++y)
+                    for (auto x = startstop[0]; x < startstop[3]; ++x) {
+                        const auto tx = x - startstop[0];
+                        const auto ty = y - startstop[1];
+                        const auto tz = z - startstop[2];
+                        const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+
+                        in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
+                    }
+            std::vector<torch::jit::IValue> inputs;
+            inputs.push_back(in);
+            auto out = m_model.forward(inputs).toTensor();
+            for (auto z = startstop[2]; z < startstop[5]; ++z)
+                for (std::int64_t c = 0; c < modelSize(); ++c)
+                    for (auto y = startstop[1]; y < startstop[4]; ++y)
+                        for (auto x = startstop[0]; x < startstop[3]; ++x) {
+                            const auto tx = x - startstop[0];
+                            const auto ty = y - startstop[1];
+                            const auto tz = z - startstop[2];
+                            if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
+                                const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+                                org_out[ctIdx] = static_cast<std::uint8_t>(c + part * modelSize());
+                            }
+                        }
+        }
+        return true;
+    }
+
+    bool loadModel(int part = 0)
+    {
+        if (part < 0 || part > 3)
+            return false;
+        const std::array<std::string, 4> names = { "freezed_model1.pt", "freezed_model2.pt", "freezed_model3.pt", "freezed_model4.pt" };
+        try {
+            // Deserialize the ScriptModule from a file using torch::jit::load().
+            m_model = torch::jit::load(names[part]);
+            // m_model = torch::jit::load("C:/Users/ander/source/ctsegmentation/build/tests/Debug/" + names[part]);
+            bool test = false;
+        } catch (const c10::Error& e) {
+            std::cout << e.what() << std::endl;
+            std::cerr << "error loading the model\n";
+            return false;
+        }
+        return true;
+    }
 
 private:
     torch::jit::script::Module m_model;
-}
+};
 
-bool
-load_model(const std::string& model_name)
-{
-
-    torch::jit::script::Module module;
-    try {
-        // Deserialize the ScriptModule from a file using torch::jit::load().
-        module = torch::jit::load(model_name);
-    } catch (const c10::Error& e) {
-        std::cout << e.what() << std::endl;
-        std::cerr << "error loading the model\n";
-        return false;
-    }
-    return true;
-}
 }
