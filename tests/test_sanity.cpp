@@ -3,14 +3,13 @@
 #include <iostream>
 #include <string>
 
-#include "dxmcctseg/dxmcctseg.hpp"
-
+#include "ctsegmentator\ctsegmentator.hpp"
 
 int main()
 {
-    torch::Tensor tensor = torch::rand({2, 3});
+    torch::Tensor tensor = torch::rand({ 2, 3 });
     std::cout << tensor << std::endl;
-    dxmcctseg::Segmentator s;
+    ctsegmentator::Segmentator s;
     std::size_t N = 256 * 256 * 48;
     std::vector<float> im(N, 0);
     std::vector<std::uint8_t> org(N, 0);

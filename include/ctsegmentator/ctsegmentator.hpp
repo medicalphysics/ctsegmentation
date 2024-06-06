@@ -6,7 +6,7 @@
 #include <torch/script.h>
 #include <torch/torch.h>
 
-namespace dxmcctseg {
+namespace ctsegmentator {
 
 class Segmentator {
 public:
