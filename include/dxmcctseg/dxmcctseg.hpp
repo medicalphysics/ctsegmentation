@@ -1,4 +1,5 @@
 #include <array>
+#include <atomic>
 #include <span>
 #include <string>
 
@@ -26,6 +27,19 @@ public:
         return 16;
     }
 
+    std::array<int, 2> progress() const
+    {
+
+        auto t_ref = std::atomic_ref(m_tasks);
+        auto n_ref = std::atomic_ref(m_total_task);
+
+        std::array<int, 2> p = {
+            t_ref.load(),
+            n_ref.load()
+        };
+        return p;
+    }
+
     bool segment(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
     {
         const std::array<std::int64_t, 3> sh = {
@@ -33,10 +47,13 @@ public:
             static_cast<std::int64_t>(dataShape[1]),
             static_cast<std::int64_t>(dataShape[2])
         };
-        bool success = segmentPart(ct_in, org_out, sh, 1);
-        success = success && segmentPart(ct_in, org_out, sh, 2);
-        success = success && segmentPart(ct_in, org_out, sh, 3);
-        success = success && segmentPart(ct_in, org_out, sh, 4);
+
+        const auto indices = tensorIndices(sh);
+        m_total_task = indices.size() * 4;
+        bool success = segmentPart(ct_in, org_out, sh, indices, 1);
+        success = success && segmentPart(ct_in, org_out, sh, indices, 2);
+        success = success && segmentPart(ct_in, org_out, sh, indices, 3);
+        success = success && segmentPart(ct_in, org_out, sh, indices, 4);
         return success;
     }
 
@@ -74,20 +91,29 @@ protected:
         return indices;
     }
 
-    bool segmentPart(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::int64_t, 3>& dataShape, std::size_t part = 0)
+    static constexpr float transformCTData(const float val)
+    {
+        return (val + 1024) / 2048;
+    }
+
+    bool segmentPart(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::int64_t, 3>& dataShape,
+        const std::vector<std::array<std::int64_t, 6>>& indices, std::size_t part = 0)
     {
         bool success = loadModel(part);
         success = success && ct_in.size() == org_out.size();
         if (!success)
             return success;
 
-        auto in = torch::zeros({ batchSize(), 1, modelShape()[0], modelShape()[1] }, torch::dtype(torch::kFloat32));
+        auto progress_ref = std::atomic_ref(m_tasks);
 
-        const auto indices = tensorIndices(dataShape);
+        auto in = torch::empty({ batchSize(), 1, modelShape()[0], modelShape()[1] }, torch::dtype(torch::kFloat32));
+        auto in_acc = in.accessor<float, 4>();
+
         torch::NoGradGuard no_grad;
         m_model.eval();
 
         for (const auto& startstop : indices) {
+            in.fill_(0);
             for (auto z = startstop[2]; z < startstop[5]; ++z)
                 for (auto y = startstop[1]; y < startstop[4]; ++y)
                     for (auto x = startstop[0]; x < startstop[3]; ++x) {
@@ -96,11 +122,13 @@ protected:
                         const auto tz = z - startstop[2];
                         const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
 
-                        in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
+                        in_acc[tz][0][ty][tx] = transformCTData(ct_in[ctIdx]);
+                        // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
                     }
             std::vector<torch::jit::IValue> inputs;
             inputs.push_back(in);
             auto out = m_model.forward(inputs).toTensor();
+            auto out_acc = out.accessor<float, 4>();
             for (auto z = startstop[2]; z < startstop[5]; ++z)
                 for (std::int64_t c = 0; c < modelSize(); ++c)
                     for (auto y = startstop[1]; y < startstop[4]; ++y)
@@ -108,11 +136,13 @@ protected:
                             const auto tx = x - startstop[0];
                             const auto ty = y - startstop[1];
                             const auto tz = z - startstop[2];
-                            if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
+                            // if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
+                            if (out_acc[tz][c][ty][tx] > 0.5f) {
                                 const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
                                 org_out[ctIdx] = static_cast<std::uint8_t>(c + part * modelSize());
                             }
                         }
+            progress_ref.fetch_add(1);
         }
         return true;
     }
@@ -125,11 +155,9 @@ protected:
         try {
             // Deserialize the ScriptModule from a file using torch::jit::load().
             m_model = torch::jit::load(names[part]);
-            // m_model = torch::jit::load("C:/Users/ander/source/ctsegmentation/build/tests/Debug/" + names[part]);
-            bool test = false;
         } catch (const c10::Error& e) {
-            std::cout << e.what() << std::endl;
-            std::cerr << "error loading the model\n";
+            // std::cout << e.what() << std::endl;
+            // std::cerr << "error loading the model\n";
             return false;
         }
         return true;
@@ -137,6 +165,8 @@ protected:
 
 private:
     torch::jit::script::Module m_model;
+    int m_tasks = 0;
+    int m_total_task = 0;
 };
 
 }

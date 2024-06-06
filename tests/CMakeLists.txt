@@ -2,7 +2,7 @@ include(CTest)
 ENABLE_TESTING()
 
 set(TEST_SOURCES 
-    "test.cpp"    
+    "test_sanity.cpp"    
 )
 
 
