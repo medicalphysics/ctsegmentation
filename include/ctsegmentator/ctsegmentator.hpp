@@ -40,7 +40,7 @@ public:
         return p;
     }
 
-    bool segment(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
+    bool segment(std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
     {
         const std::array<std::int64_t, 3> sh = {
             static_cast<std::int64_t>(dataShape[0]),
@@ -48,12 +48,33 @@ public:
             static_cast<std::int64_t>(dataShape[2])
         };
 
+        const auto ct_prep = transformCTData<double>(ct_raw);
+
         const auto indices = tensorIndices(sh);
         m_total_task = indices.size() * 4;
-        bool success = segmentPart(ct_in, org_out, sh, indices, 1);
-        success = success && segmentPart(ct_in, org_out, sh, indices, 2);
-        success = success && segmentPart(ct_in, org_out, sh, indices, 3);
-        success = success && segmentPart(ct_in, org_out, sh, indices, 4);
+        bool success = segmentPart(ct_prep, org_out, sh, indices, 1);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 2);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 3);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 4);
+        return success;
+    }
+
+    bool segment(std::span<const float> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
+    {
+        const std::array<std::int64_t, 3> sh = {
+            static_cast<std::int64_t>(dataShape[0]),
+            static_cast<std::int64_t>(dataShape[1]),
+            static_cast<std::int64_t>(dataShape[2])
+        };
+
+        const auto ct_prep = transformCTData<float>(ct_raw);
+
+        const auto indices = tensorIndices(sh);
+        m_total_task = indices.size() * 4;
+        bool success = segmentPart(ct_prep, org_out, sh, indices, 1);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 2);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 3);
+        success = success && segmentPart(ct_prep, org_out, sh, indices, 4);
         return success;
     }
 
@@ -91,13 +112,16 @@ protected:
         return indices;
     }
 
-    static constexpr float transformCTData(const float val)
+    template <std::floating_point T>
+    static constexpr std::vector<float> transformCTData(std::span<const T> arr)
     {
-        return (val + 1024) / 2048;
+        std::vector<float> c(arr.size());
+        std::transform(arr.cbegin(), arr.cend(), c.begin(), [](const auto av) { return (static_cast<float>(av) + 1024) / 2048; });
+        return c;
     }
 
     bool segmentPart(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::int64_t, 3>& dataShape,
-        const std::vector<std::array<std::int64_t, 6>>& indices, std::size_t part = 0)
+        const std::vector<std::array<std::int64_t, 6>>& indices, int part = 0)
     {
         bool success = loadModel(part);
         success = success && ct_in.size() == org_out.size();
@@ -122,7 +146,7 @@ protected:
                         const auto tz = z - startstop[2];
                         const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
 
-                        in_acc[tz][0][ty][tx] = transformCTData(ct_in[ctIdx]);
+                        in_acc[tz][0][ty][tx] = ct_in[ctIdx];
                         // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
                     }
             std::vector<torch::jit::IValue> inputs;

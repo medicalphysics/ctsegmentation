@@ -11,7 +11,7 @@ int main()
     std::cout << tensor << std::endl;
     ctsegmentator::Segmentator s;
     std::size_t N = 256 * 256 * 48;
-    std::vector<float> im(N, 0);
+    std::vector<double> im(N, 0);
     std::vector<std::uint8_t> org(N, 0);
     std::array<std::size_t, 3> shape = { 256, 256, 48 };
 
