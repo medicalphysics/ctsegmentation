@@ -14,10 +14,17 @@ public:
     {
         return { 1.5f, 1.5f, 1.5f };
     }
-    static constexpr std::array<std::int64_t, 2> modelShape()
+
+    const std::array<std::int64_t, 2>& modelShape() const
     {
-        return { 256, 256 };
+        return m_model_shape;
     }
+    void setModelShape(std::int64_t x, std::int64_t y)
+    {
+        m_model_shape[0] = std::max(x, std::int64_t { 256 });
+        m_model_shape[1] = std::max(y, std::int64_t { 256 });
+    }
+
     static constexpr std::int64_t batchSize()
     {
         return 16;
@@ -189,6 +196,7 @@ protected:
 
 private:
     torch::jit::script::Module m_model;
+    std::array<std::int64_t, 2> m_model_shape = { 256, 256 };
     int m_tasks = 0;
     int m_total_task = 0;
 };
