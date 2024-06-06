@@ -42,11 +42,11 @@ function(copy_torch_binaries func_target)
         # the DLLs need to be copied to avoid memory errors.
         if (MSVC)
                 file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
-                add_custom_command(TARGET ${filename}
+                add_custom_command(TARGET ${func_target}
                                 POST_BUILD
                                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                                 ${TORCH_DLLS}
-                                $<TARGET_FILE_DIR:${filename}>)
+                                $<TARGET_FILE_DIR:${func_target}>)
         endif (MSVC)
 endfunction()
 
