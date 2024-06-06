@@ -21,7 +21,7 @@ target_include_directories(
 )
 
 find_package(Torch REQUIRED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 target_link_libraries(libctsegmentator INTERFACE "${TORCH_LIBRARIES}")
 
