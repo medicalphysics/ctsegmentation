@@ -54,3 +54,4 @@ data/__pycache__/*
 data/*.pt
 data/*.png
 data/models/*.pt
+data/patstats.csv
