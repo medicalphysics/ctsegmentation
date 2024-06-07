@@ -70,7 +70,7 @@ def plot_loss(loss, lr, dice, name="train"):
         plt.xlabel("Batch nr")
         plt.ylabel(l)
     plt.tight_layout()
-    plt.savefig(name + ".png", dpi=600)
+    plt.savefig(name, dpi=600)
     plt.clf()
 
 
