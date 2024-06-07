@@ -17,7 +17,7 @@ from matplotlib import pylab as plt
 torch.set_num_threads(os.cpu_count())
 
 
-def train_one_epoch(model, loss, optimizer, data, device, shuffle=True, n_iter=None):
+def train_one_epoch(model, loss, optimizer, data, device, shuffle=True, n_iter=100):
     ## see https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
     model.train(True)
     stop_ind = min(len(data), n_iter)
@@ -25,15 +25,11 @@ def train_one_epoch(model, loss, optimizer, data, device, shuffle=True, n_iter=N
     for ind, (image, label) in enumerate(data.iter_ever(shuffle)):
         image = image.to(device, non_blocking=True)
         label = label.to(device, non_blocking=True)
-        # if ind % 2 == 1:
-        #   optimizer.zero_grad(set_to_none=True)
         optimizer.zero_grad(set_to_none=True)
         output = model(image)
         l = loss(output, label)
         l.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 12)
-        # if ind % 2 == 1:
-        #    optimizer.step()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 12)
         optimizer.step()
         pbar.update(1)
         if ind >= stop_ind:
@@ -112,6 +108,8 @@ def start_train(
     load_only_model=False,
     data_path=None,
 ):
+    model_dir = os.path.join(os.path.dirname(__file__), "models")
+    os.makedirs(model_dir, exist_ok=True)
 
     name = "model.pt"
     if part == 1:
@@ -126,6 +124,7 @@ def start_train(
     elif part == 4:
         volumes = list(range(46, 61))
         name = "model4.pt"
+    model_path = os.path.join(model_dir, name)
 
     dataset_val = TotSegDataset2D(
         data_path,
@@ -135,6 +134,7 @@ def start_train(
         train_shape=train_shape,
         dtype=torch.float32,
     )
+
     dataset = TotSegDataset2D(
         data_path,
         train=True,
@@ -172,8 +172,8 @@ def start_train(
     min_val_loss = 1e9
 
     if load_model:
-        if os.path.exists(name):
-            state = torch.load(name)
+        if os.path.exists(model_path):
+            state = torch.load(model_path, map_location=torch.device(device))
             model.load_state_dict(state["model"])
             if not load_only_model:
                 optimizer.load_state_dict(state["optimizer"])
@@ -203,55 +203,101 @@ def start_train(
                 "dice_score": dice_score,
                 "lr_rate": lr_rate,
             }
-            torch.save(state, name)
-            # traced_script_module = torch.jit.trace(model.to('cpu'), torch.rand(dataset.batch_shape(), dtype=torch.float32))
-            # traced_script_module.save("traced_model.pt")
-        plot_loss(validation_loss, lr_rate, dice_score, name)
+            torch.save(state, model_path)
+        plot_loss(
+            validation_loss,
+            lr_rate,
+            dice_score,
+            os.path.join(
+                model_dir, "loss{}.png".format(part if part in range(1, 5) else "")
+            ),
+        )
 
 
-def save_model(input_shape, out_channel_size=16, part=1):
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+def save_inference_model(input_shape, out_channel_size=16, part=1):
+    model_dir = os.path.join(os.path.dirname(__file__), "models")
+    model_path = os.path.join(model_dir, "model{}.pt".format(part))
     model = get_model(out_channel_size)
     state = torch.load(
-        os.path.join(dir_path, "model{}.pt".format(part)),
+        model_path,
         map_location=torch.device("cpu"),
     )
     model.load_state_dict(state["model"])
     full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
     full_model.eval()
     with torch.no_grad():
-        input = torch.rand(input_shape)
-
-        # full_model = torch.compile(full_model)
-        trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
-        # trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
-        trace = torch.jit.freeze(trace)
-        trace.save(os.path.join(dir_path, r"freezed_model{}.pt".format(part)))
+        trace = torch.jit.trace(
+            full_model, torch.rand(input_shape, dtype=torch.float32)
+        )
+        trace.save(os.path.join(model_dir, "freezed_model{}.pt".format(part)))
 
 
-def predict(data, part=1):
-    model = get_model(data._label_tensor_dim)
-    state = torch.load("model{}.pt".format(part), map_location=torch.device("cpu"))
-    model.load_state_dict(state["model"])
-    model.eval()
+def predict(data_path, part=0):
+    if part == 1:
+        volumes = list(range(1, 16))
+    elif part == 2:
+        volumes = list(range(16, 31))
+    elif part == 3:
+        volumes = list(range(31, 46))
+    elif part == 4:
+        volumes = list(range(46, 61))
+    else:
+        volumes = None
+    data = TotSegDataset2D(
+        data_path,
+        train=False,
+        batch_size=1,
+        volumes=volumes,
+        train_shape=(384, 384),
+        dtype=torch.float32,
+    )
+    data.shuffle()
+    models = list()
+    if part not in range(1, 5):
+        for i in range(1, 5):
+            model_dir = os.path.join(os.path.dirname(__file__), "models")
+            model_path = os.path.join(model_dir, "model{}.pt".format(i))
+            model = get_model(16)
+            state = torch.load(model_path, map_location=torch.device("cpu"))
+            model.load_state_dict(state["model"])
+            full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
+            full_model.eval()
+            models.append(full_model)
+    else:
+        model_dir = os.path.join(os.path.dirname(__file__), "models")
+        model_path = os.path.join(model_dir, "model{}.pt".format(part))
+        model = get_model(data._label_tensor_dim)
+        state = torch.load(model_path, map_location=torch.device("cpu"))
+        model.load_state_dict(state["model"])
+        full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
+        full_model.eval()
+        models.append(full_model)
+
     with torch.no_grad():
         for idx in range(len(data)):
-            batch = data._item_splits[idx]
-            image, label = data[idx]
-            # label_index = label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)
-            out = softmax_helper_dim1(model(image))
-            seg = np.zeros(image.shape[2:])
-            for i in range(1, out.shape[1]):
-                s = np.squeeze(out[0, i, :, :])
-                seg[s > 0.5] = i
-            plt.subplot(1, 3, 1)
-            plt.imshow(image[0, 0, :, :])
-            plt.subplot(1, 3, 2)
-            plt.imshow(label[0, 0, :, :])
-            plt.subplot(1, 3, 3)
-            plt.imshow(seg)
-            print(batch)
-            plt.show()
+            image_b, label_b = data[idx]
+            out_b = [
+                full_model(image_b).detach().cpu().numpy() for full_model in models
+            ]
+            for nbatch in range(data._batch_size):
+                image = np.squeeze(image_b.detach().cpu().numpy()[nbatch, 0, :, :])
+                label = np.squeeze(label_b.detach().cpu().numpy()[nbatch, 0, :, :])
+                out = [np.squeeze(b[nbatch, :, :, :]) for b in out_b]
+                out_labels = np.zeros_like(image)
+                for mIdx in range(len(models)):
+                    for i in range(1, out[mIdx].shape[0]):
+                        seg = np.squeeze(out[mIdx][i, :, :])
+                        out_labels[seg > 0.5] = i + 15 * mIdx
+
+                plt.subplot(2, 2, 1)
+                plt.imshow(image)
+                plt.subplot(2, 2, 2)
+                plt.imshow(label)
+                plt.subplot(2, 2, 3)
+                plt.imshow(out_labels)
+                plt.subplot(2, 2, 4)
+                # plt.imshow(np.squeeze(out[1:, :, :].max(axis=0)))
+                plt.show()
 
 
 def print_model(dataset_path):
@@ -291,62 +337,22 @@ if __name__ == "__main__":
     #    load_only_model=False,
     #    data_path=dataset_path,
     # )
-    # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
+    for part in range(1, 5):
+        start_train(
+            n_epochs=5,
+            device="cuda",
+            batch_size=batch_size,
+            part=part,
+            train_shape=(384, 384),
+            load_model=True,
+            load_only_model=False,
+            data_path=dataset_path,
+        )
 
     if True:
         for i in range(1, 5):
-            save_model((16, 1, 384, 384), 16, i)
+            save_inference_model((16, 1, 384, 384), 16, i)
+            break
 
-    if False:
-        volumes = list([10, 11, 12, 13, 14])
-        dataset = TotSegDataset2D(
-            dataset_path,
-            train=False,
-            batch_size=batch_size,
-            volumes=volumes,
-            dtype=torch.float32,
-        )
-        save_model(dataset)
-        dataset.shuffle()
-        predict(dataset)
-
-    if False:
-        d = TotSegDataset2D(dataset_path, train=True, batch_size=16)
-        image, label = d[8]
-        model = get_model(d._label_tensor_dim)
-        state = torch.load("model.pt")
-        model.load_state_dict(state["model"])
-        model.eval()
-        with torch.no_grad():
-            # out = torch.sigmoid(model(image)).detach()
-            out = model(image).detach()
-
-        print(image.shape, label.shape, out.shape)
-
-        # label_exp=label.mul(torch.arange(label.shape[1]).reshape((label.shape[1], 1, 1))).sum(dim=1, keepdim=True)
-        for i in range(image.shape[0]):
-            plt.subplot(1, 3, 1)
-            plt.imshow(image[0, 0, :, :])
-            plt.subplot(1, 3, 2)
-            plt.imshow(label[0, 0, :, :])
-            plt.subplot(1, 3, 3)
-            plt.imshow(out[0, 80, :, :])
-            plt.show()
-
-
-"""
-    data = torch.rand((4, 1, 128, 128, 128))
-
-    punet = PlainConvUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
-                             (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
-    print(punet.compute_conv_feature_map_size(data.shape[2:]))
-   
-    runet = ResidualUNet(1, 6, (32, 64, 125, 256, 320, 320), nn.Conv3d, 3, (1, 2, 2, 2, 2, 2), (2, 2, 2, 2, 2, 2), 1,
-                                (2, 2, 2, 2, 2), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=True)
-    print(runet.compute_conv_feature_map_size(data.shape[2:]))
-
-    runet = ResidualUNet(1, 4, (32, 64, 125, 256,), nn.Conv3d, 3, (1, 2, 2, 2, ), (2, 2, 2, 2, ), 1,
-                                (2, 2, 2, ), False, nn.BatchNorm3d, None, None, None, nn.ReLU, deep_supervision=False)
-    print(runet.compute_conv_feature_map_size(data.shape[2:]))
-    
-"""
+    if True:
+        predict(dataset_path, part=0)
