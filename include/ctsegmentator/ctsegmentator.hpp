@@ -88,7 +88,7 @@ public:
 protected:
     std::vector<std::array<std::int64_t, 6>> tensorIndices(const std::array<std::int64_t, 3>& dataShape) const
     {
-        constexpr auto mSh = modelShape();
+        const auto mSh = modelShape();
         std::int64_t nx = dataShape[0] / mSh[0];
         if (nx * mSh[0] < dataShape[0])
             nx++;
