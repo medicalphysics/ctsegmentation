@@ -106,6 +106,7 @@ def start_train(
     n_epochs=150,
     device="cpu",
     batch_size=4,
+    train_shape=(256, 256),
     part=1,
     load_model=True,
     load_only_model=False,
@@ -131,6 +132,7 @@ def start_train(
         train=False,
         batch_size=batch_size,
         volumes=volumes,
+        train_shape=train_shape,
         dtype=torch.float32,
     )
     dataset = TotSegDataset2D(
@@ -138,6 +140,7 @@ def start_train(
         train=True,
         batch_size=batch_size,
         volumes=volumes,
+        train_shape=train_shape,
         dtype=torch.float32,
     )
 
@@ -182,7 +185,7 @@ def start_train(
 
     for ind in range(n_epochs):
         train_one_epoch(
-            model, loss, optimizer, dataset, device, shuffle=True, n_iter=1000
+            model, loss, optimizer, dataset, device, shuffle=True, n_iter=2000
         )
         lossv, dicev = validate(model, dataset_val, loss, device)
         sheduler.step(lossv)
@@ -210,19 +213,20 @@ def save_model(input_shape, out_channel_size=16, part=1):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     model = get_model(out_channel_size)
     state = torch.load(
-        os.path.join(dir_path, "models", "model{}.pt".format(part)),
+        os.path.join(dir_path, "model{}.pt".format(part)),
         map_location=torch.device("cpu"),
     )
     model.load_state_dict(state["model"])
     full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
     full_model.eval()
-    input = torch.rand(input_shape)
+    with torch.no_grad():
+        input = torch.rand(input_shape)
 
-    # full_model = torch.compile(full_model)
-    trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
-    #trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
-    # trace = torch.jit.freeze(trace)
-    trace.save(os.path.join(dir_path, "models", r"freezed_model{}.pt".format(part)))
+        # full_model = torch.compile(full_model)
+        trace = torch.jit.trace(full_model, torch.rand(input_shape, dtype=torch.float32))
+        # trace = torch.jit.optimize_for_inference(torch.jit.script(full_model.eval()))
+        trace = torch.jit.freeze(trace)
+        trace.save(os.path.join(dir_path, r"freezed_model{}.pt".format(part)))
 
 
 def predict(data, part=1):
@@ -275,23 +279,23 @@ def print_model(dataset_path):
 if __name__ == "__main__":
     # dataset_path = r"C:\Users\ander\totseg"
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
-    batch_size = 28
-    for i in range(1, 5):
-        save_model(
-            (16, 1, 256, 256),
-            out_channel_size=16,
-            part=i,
-        )
+    batch_size = 12
+
     # start_train(
     #    n_epochs=150,
     #    device="cuda",
     #    batch_size=batch_size,
-    #    part=3,
+    #    part=1,
+    #    train_shape=(384, 384),
     #    load_model=True,
-    #    load_only_model=True,
+    #    load_only_model=False,
     #    data_path=dataset_path,
     # )
     # start_train(n_epochs = 3, device='cpu', batch_size=batch_size, load_model=True, data_path = dataset_path)
+
+    if True:
+        for i in range(1, 5):
+            save_model((16, 1, 384, 384), 16, i)
 
     if False:
         volumes = list([10, 11, 12, 13, 14])
