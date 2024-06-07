@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-#include "ctsegmentator\ctsegmentator.hpp"
+#include "ctsegmentator/ctsegmentator.hpp"
 
 int main()
 {
