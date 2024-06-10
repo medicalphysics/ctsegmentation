@@ -8,6 +8,12 @@
 
 namespace ctsegmentator {
 
+struct Job {
+    std::array<std::int64_t, 3> start;
+    std::array<std::int64_t, 3> stop;
+    int part = 0;
+};
+
 class Segmentator {
 public:
     static constexpr std::array<float, 3> spacing()
@@ -47,7 +53,7 @@ public:
         return p;
     }
 
-    bool segment(std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
+    std::vector<Job> segmentJobs(std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape) const
     {
         const std::array<std::int64_t, 3> sh = {
             static_cast<std::int64_t>(dataShape[0]),
@@ -55,18 +61,23 @@ public:
             static_cast<std::int64_t>(dataShape[2])
         };
 
-        const auto ct_prep = transformCTData<double>(ct_raw);
-
         const auto indices = tensorIndices(sh);
-        m_total_task = indices.size() * 4;
-        bool success = segmentPart(ct_prep, org_out, sh, indices, 1);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 2);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 3);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 4);
-        return success;
+        const auto N = indices.size();
+        std::vector<Job> jobs(N * 4);
+        for (int i = 0; i < 4; i++) {
+            for (std::size_t j = 0; j < N; ++j) {
+                auto& job = jobs[j + N * i];
+                for (int k = 0; k < 3; ++k) {
+                    job.start[k] = indices[j][k];
+                    job.stop[k] = indices[j][k + 3];
+                    job.part = i + 1;
+                }
+            }
+        }
+        return jobs;
     }
 
-    bool segment(std::span<const float> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
+    bool segment(const Job& job, std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape)
     {
         const std::array<std::int64_t, 3> sh = {
             static_cast<std::int64_t>(dataShape[0]),
@@ -74,14 +85,46 @@ public:
             static_cast<std::int64_t>(dataShape[2])
         };
 
-        const auto ct_prep = transformCTData<float>(ct_raw);
+        bool success = loadModel(job.part);
+        if (!success)
+            return success;
 
-        const auto indices = tensorIndices(sh);
-        m_total_task = indices.size() * 4;
-        bool success = segmentPart(ct_prep, org_out, sh, indices, 1);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 2);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 3);
-        success = success && segmentPart(ct_prep, org_out, sh, indices, 4);
+        auto in = torch::empty({ batchSize(), 1, modelShape()[0], modelShape()[1] }, torch::dtype(torch::kFloat32));
+        auto in_acc = in.accessor<float, 4>();
+
+        torch::NoGradGuard no_grad;
+        m_model.eval();
+        in.fill_(0);
+        for (auto z = job.start[2]; z < job.stop[2]; ++z)
+            for (auto y = job.start[1]; y < job.stop[2]; ++y)
+                for (auto x = job.start[0]; x < job.stop[0]; ++x) {
+                    const auto tx = x - job.start[0];
+                    const auto ty = y - job.start[1];
+                    const auto tz = z - job.start[2];
+                    const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+
+                    in_acc[tz][0][ty][tx] = ct_raw[ctIdx];
+                    // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
+                }
+        in.add_(1024);
+        in.div_(2048);
+        std::vector<torch::jit::IValue> inputs;
+        inputs.push_back(in);
+        auto out = m_model.forward(inputs).toTensor();
+        auto out_acc = out.accessor<float, 4>();
+        for (auto z = job.start[2]; z < job.stop[2]; ++z)
+            for (std::int64_t c = 0; c < modelSize(); ++c)
+                for (auto y = job.start[1]; y < job.stop[2]; ++y)
+                    for (auto x = job.start[0]; x < job.stop[0]; ++x) {
+                        const auto tx = x - job.start[0];
+                        const auto ty = y - job.start[1];
+                        const auto tz = z - job.start[2];
+                        // if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
+                        if (out_acc[tz][c][ty][tx] > 0.75f) {
+                            const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+                            org_out[ctIdx] = static_cast<std::uint8_t>(c + job.part * modelSize());
+                        }
+                    }
         return success;
     }
 
@@ -119,83 +162,28 @@ protected:
         return indices;
     }
 
-    template <std::floating_point T>
-    static constexpr std::vector<float> transformCTData(std::span<const T> arr)
-    {
-        std::vector<float> c(arr.size());
-        std::transform(arr.cbegin(), arr.cend(), c.begin(), [](const auto av) { return (static_cast<float>(av) + 1024) / 2048; });
-        return c;
-    }
-
-    bool segmentPart(std::span<const float> ct_in, std::span<std::uint8_t> org_out, const std::array<std::int64_t, 3>& dataShape,
-        const std::vector<std::array<std::int64_t, 6>>& indices, int part = 0)
-    {
-        bool success = loadModel(part);
-        success = success && ct_in.size() == org_out.size();
-        if (!success)
-            return success;
-
-        auto progress_ref = std::atomic_ref(m_tasks);
-
-        auto in = torch::empty({ batchSize(), 1, modelShape()[0], modelShape()[1] }, torch::dtype(torch::kFloat32));
-        auto in_acc = in.accessor<float, 4>();
-
-        torch::NoGradGuard no_grad;
-        m_model.eval();
-
-        for (const auto& startstop : indices) {
-            in.fill_(0);
-            for (auto z = startstop[2]; z < startstop[5]; ++z)
-                for (auto y = startstop[1]; y < startstop[4]; ++y)
-                    for (auto x = startstop[0]; x < startstop[3]; ++x) {
-                        const auto tx = x - startstop[0];
-                        const auto ty = y - startstop[1];
-                        const auto tz = z - startstop[2];
-                        const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
-
-                        in_acc[tz][0][ty][tx] = ct_in[ctIdx];
-                        // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
-                    }
-            std::vector<torch::jit::IValue> inputs;
-            inputs.push_back(in);
-            auto out = m_model.forward(inputs).toTensor();
-            auto out_acc = out.accessor<float, 4>();
-            for (auto z = startstop[2]; z < startstop[5]; ++z)
-                for (std::int64_t c = 0; c < modelSize(); ++c)
-                    for (auto y = startstop[1]; y < startstop[4]; ++y)
-                        for (auto x = startstop[0]; x < startstop[3]; ++x) {
-                            const auto tx = x - startstop[0];
-                            const auto ty = y - startstop[1];
-                            const auto tz = z - startstop[2];
-                            // if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
-                            if (out_acc[tz][c][ty][tx] > 0.5f) {
-                                const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
-                                org_out[ctIdx] = static_cast<std::uint8_t>(c + part * modelSize());
-                            }
-                        }
-            progress_ref.fetch_add(1);
-        }
-        return true;
-    }
-
     bool loadModel(int part = 0)
     {
         if (part < 0 || part > 3)
             return false;
-        const std::array<std::string, 4> names = { "freezed_model1.pt", "freezed_model2.pt", "freezed_model3.pt", "freezed_model4.pt" };
-        try {
-            // Deserialize the ScriptModule from a file using torch::jit::load().
-            m_model = torch::jit::load(names[part]);
-        } catch (const c10::Error& e) {
-            // std::cout << e.what() << std::endl;
-            // std::cerr << "error loading the model\n";
-            return false;
+        if (m_current_model != part) {
+            const std::array<std::string, 4> names = { "freezed_model1.pt", "freezed_model2.pt", "freezed_model3.pt", "freezed_model4.pt" };
+            try {
+                // Deserialize the ScriptModule from a file using torch::jit::load().
+                m_model = torch::jit::load(names[part]);
+            } catch (const c10::Error& e) {
+                // std::cout << e.what() << std::endl;
+                // std::cerr << "error loading the model\n";
+                return false;
+            }
+            m_current_model = part;
         }
         return true;
     }
 
 private:
     torch::jit::script::Module m_model;
+    int m_current_model = 0;
     std::array<std::int64_t, 2> m_model_shape = { 256, 256 };
     int m_tasks = 0;
     int m_total_task = 0;
