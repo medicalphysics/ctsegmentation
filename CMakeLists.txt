@@ -27,13 +27,16 @@ target_link_libraries(libctsegmentator INTERFACE "${TORCH_LIBRARIES}")
 
 # Function to copy generated models to target binary directory
 # Dependency on models are handled by linking target to libdxmc
-function(copy_ctsegmentator_model_to_binary_dir func_target model_name)
-        add_custom_command(
-            TARGET ${func_target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${ctsegmentator_SOURCE_DIR}/data/models/${model_name}"
-                "$<TARGET_FILE_DIR:${func_target}>/${model_name}"            
-        )        
+function(copy_ctsegmentator_model_to_binary_dir func_target)
+        set(MODELS freezed_model1.pt freezed_model2.pt freezed_model3.pt freezed_model4.pt)
+        foreach(model_name ${MODELS})                       
+            add_custom_command(
+                TARGET ${func_target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${ctsegmentator_SOURCE_DIR}/data/models/${model_name}"
+                    "$<TARGET_FILE_DIR:${func_target}>/${model_name}"            
+            )
+        endforeach()               
 endfunction()
 
 function(copy_torch_binaries func_target)

@@ -12,11 +12,8 @@ foreach(sourcefile ${TEST_SOURCES})
     add_test(NAME ${filename} COMMAND ${filename})    
     
     #Adding models    
-    copy_ctsegmentator_model_to_binary_dir(${filename} freezed_model1.pt)   
-    copy_ctsegmentator_model_to_binary_dir(${filename} freezed_model2.pt)   
-    copy_ctsegmentator_model_to_binary_dir(${filename} freezed_model3.pt)   
-    copy_ctsegmentator_model_to_binary_dir(${filename} freezed_model4.pt)   
-
+    copy_ctsegmentator_model_to_binary_dir(${filename})   
+    
     #Adding torch binaries
-    copy_torch_binaries(${filename})
+    #copy_torch_binaries(${filename})
 endforeach()
