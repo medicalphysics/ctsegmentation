@@ -15,5 +15,5 @@ foreach(sourcefile ${TEST_SOURCES})
     copy_ctsegmentator_model_to_binary_dir(${filename})   
     
     #Adding torch binaries
-    #copy_torch_binaries(${filename})
+    copy_torch_binaries(${filename})
 endforeach()

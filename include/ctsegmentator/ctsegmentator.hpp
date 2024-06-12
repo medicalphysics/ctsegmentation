@@ -1,10 +1,11 @@
+#include <torch/torch.h>
+
+#include <torch/script.h>
+
 #include <array>
 #include <atomic>
 #include <span>
 #include <string>
-
-#include <torch/script.h>
-#include <torch/torch.h>
 
 namespace ctsegmentator {
 
@@ -24,19 +25,9 @@ struct Job {
 
 class Segmentator {
 public:
-    static constexpr std::array<float, 3> spacing()
-    {
-        return { 1.5f, 1.5f, 1.5f };
-    }
-
     const std::array<std::int64_t, 2>& modelShape() const
     {
         return m_model_shape;
-    }
-    void setModelShape(std::int64_t x, std::int64_t y)
-    {
-        m_model_shape[0] = std::max(x, std::int64_t { 256 });
-        m_model_shape[1] = std::max(y, std::int64_t { 256 });
     }
 
     static constexpr std::int64_t batchSize()
@@ -46,19 +37,6 @@ public:
     static constexpr std::int64_t modelSize()
     {
         return 16;
-    }
-
-    std::array<int, 2> progress() const
-    {
-
-        auto t_ref = std::atomic_ref(m_tasks);
-        auto n_ref = std::atomic_ref(m_total_task);
-
-        std::array<int, 2> p = {
-            t_ref.load(),
-            n_ref.load()
-        };
-        return p;
     }
 
     std::vector<Job> segmentJobs(std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape) const
@@ -72,16 +50,16 @@ public:
         const auto indices = tensorIndices(sh);
         const auto N = indices.size();
         std::vector<Job> jobs(N * 4);
-        constexpr std::array<ModelPart, 4> model = {
+        const std::array<ModelPart, 4> model = {
             ModelPart::Model1,
             ModelPart::Model2,
             ModelPart::Model3,
             ModelPart::Model4
         };
-        for (int i = 0; i < model.size(); i++) {
+        for (std::size_t i = 0; i < model.size(); i++) {
             for (std::size_t j = 0; j < N; ++j) {
                 auto& job = jobs[j + N * i];
-                for (int k = 0; k < 3; ++k) {
+                for (std::size_t k = 0; k < 3; ++k) {
                     job.start[k] = indices[j][k];
                     job.stop[k] = indices[j][k + 3];
                     job.part = model[i];
@@ -132,11 +110,11 @@ public:
                     const auto tz = z - job.start[2];
                     const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
 
-                    in_acc[tz][0][ty][tx] = ct_raw[ctIdx];
+                    in_acc[tz][0][ty][tx] = static_cast<float>(ct_raw[ctIdx]);
                     // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
                 }
-        in.add_(1024);
-        in.div_(2048);
+        in.add_(float { 1024 });
+        in.div_(float { 2048 });
         std::vector<torch::jit::IValue> inputs;
         inputs.push_back(in);
         auto out = m_model.forward(inputs).toTensor();
@@ -216,15 +194,14 @@ protected:
             }
             m_current_model = part;
         }
+
         return true;
     }
 
 private:
     torch::jit::script::Module m_model;
     ModelPart m_current_model = ModelPart::Empty;
-    std::array<std::int64_t, 2> m_model_shape = { 256, 256 };
-    int m_tasks = 0;
-    int m_total_task = 0;
+    const std::array<std::int64_t, 2> m_model_shape = { 384, 384 };
 };
 
 }

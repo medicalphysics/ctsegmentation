@@ -1,10 +1,10 @@
 
 
+#include "ctsegmentator/ctsegmentator.hpp"
+
 #include <chrono>
 #include <iostream>
 #include <string>
-
-#include "ctsegmentator/ctsegmentator.hpp"
 
 int main()
 {
