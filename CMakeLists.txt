@@ -62,7 +62,7 @@ if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
     SET(CTSEGMENTATOR_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data/models" CACHE PATH "Path to directory holding Torch models")
     # Creating directory if it do not exists
     if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
-        file(MAKE_DIRECTORY ${directory})
+        file(MAKE_DIRECTORY ${CTSEGMENTATOR_MODELS_DIR})
     endif()
 
     if(NOT EXISTS "${CTSEGMENTATOR_MODELS_DIR}/freezed_model1.pt")
