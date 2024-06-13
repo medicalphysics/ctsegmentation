@@ -337,22 +337,22 @@ if __name__ == "__main__":
     #    load_only_model=False,
     #    data_path=dataset_path,
     # )
-    for part in range(1, 5):
-        start_train(
-            n_epochs=5,
-            device="cuda",
-            batch_size=batch_size,
-            part=part,
-            train_shape=(384, 384),
-            load_model=True,
-            load_only_model=False,
-            data_path=dataset_path,
-        )
+    # for part in range(1, 5):
+    #     start_train(
+    #         n_epochs=5,
+    #         device="cuda",
+    #         batch_size=batch_size,
+    #         part=part,
+    #         train_shape=(384, 384),
+    #         load_model=True,
+    #         load_only_model=False,
+    #         data_path=dataset_path,
+    #     )
 
     if True:
         for i in range(1, 5):
-            save_inference_model((16, 1, 384, 384), 16, i)
-            break
+            save_inference_model((64, 1, 384, 384), 16, i)
+            
 
     if True:
         predict(dataset_path, part=0)

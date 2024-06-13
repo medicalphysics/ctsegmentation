@@ -6,6 +6,7 @@
 #include <atomic>
 #include <span>
 #include <string>
+#include <thread>
 
 namespace ctsegmentator {
 
@@ -25,6 +26,12 @@ struct Job {
 
 class Segmentator {
 public:
+    Segmentator()
+    {
+        const auto nt = static_cast<int>(std::thread::hardware_concurrency());
+        torch::set_num_threads(std::max(nt, 1));
+    }
+
     const std::array<std::int64_t, 2>& modelShape() const
     {
         return m_model_shape;
@@ -32,7 +39,7 @@ public:
 
     static constexpr std::int64_t batchSize()
     {
-        return 16;
+        return 64;
     }
     static constexpr std::int64_t modelSize()
     {
