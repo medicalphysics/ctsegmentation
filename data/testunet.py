@@ -351,8 +351,8 @@ if __name__ == "__main__":
 
     if True:
         for i in range(1, 5):
-            save_inference_model((64, 1, 384, 384), 16, i)
+            save_inference_model((32, 1, 384, 384), 16, i)
             
 
-    if True:
+    if False:
         predict(dataset_path, part=0)

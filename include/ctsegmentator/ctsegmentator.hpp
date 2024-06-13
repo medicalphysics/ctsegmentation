@@ -39,8 +39,9 @@ public:
 
     static constexpr std::int64_t batchSize()
     {
-        return 64;
+        return 32;
     }
+
     static constexpr std::int64_t modelSize()
     {
         return 16;
