@@ -118,7 +118,7 @@ public:
 
         torch::NoGradGuard no_grad;
         m_model.eval();
-        in.fill_(0);
+        in.fill_(float { -1024 });
         for (auto z = job.start[2]; z < job.stop[2]; ++z)
             for (auto y = job.start[1]; y < job.stop[2]; ++y)
                 for (auto x = job.start[0]; x < job.stop[0]; ++x) {
@@ -132,6 +132,7 @@ public:
                 }
         in.add_(float { 1024 });
         in.div_(float { 2048 });
+        in.clamp_(float { 0 }, float { 1 });
         std::vector<torch::jit::IValue> inputs;
         inputs.push_back(in);
         auto out = m_model.forward(inputs).toTensor();
