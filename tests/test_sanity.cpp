@@ -17,7 +17,7 @@ int main()
     std::array<std::size_t, 3> shape = { 256, 256, 48 };
 
     auto jobs = s.segmentJobs(im, org, shape);
-    s.useCUDA(true):
+    s.useCUDA(true);
     for (const auto& job : jobs) {
         std::cout << "start ";
         auto start = std::chrono::steady_clock::now();
