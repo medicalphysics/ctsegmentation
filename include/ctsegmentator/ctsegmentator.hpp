@@ -1,6 +1,10 @@
-#include <torch/torch.h>
+
+#pragma once
+
+#include "organlist.hpp"
 
 #include <torch/script.h>
+#include <torch/torch.h>
 
 #include <array>
 #include <atomic>
@@ -45,6 +49,11 @@ public:
     static constexpr std::int64_t modelSize()
     {
         return 16;
+    }
+
+    static const std::map<std::uint8_t, std::string>& organNames()
+    {
+        return organ_names;
     }
 
     std::vector<Job> segmentJobs(std::span<const double> ct_raw, std::span<std::uint8_t> org_out, const std::array<std::size_t, 3>& dataShape) const

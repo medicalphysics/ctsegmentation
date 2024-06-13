@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(HEADER_LIST         
     "${ctsegmentator_SOURCE_DIR}/include/ctsegmentator/ctsegmentator.hpp"    
+    "${ctsegmentator_SOURCE_DIR}/include/ctsegmentator/organlist.hpp"    
 )
 
 add_library(libctsegmentator INTERFACE
