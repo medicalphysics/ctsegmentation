@@ -214,22 +214,28 @@ def start_train(
         )
 
 
-def save_inference_model(input_shape, out_channel_size=16, part=1):
+def save_inference_model(input_shape, out_channel_size=16, part=1, device="cpu"):
     model_dir = os.path.join(os.path.dirname(__file__), "models")
     model_path = os.path.join(model_dir, "model{}.pt".format(part))
-    model = get_model(out_channel_size)
+    model = get_model(out_channel_size).to(device)
     state = torch.load(
         model_path,
-        map_location=torch.device("cpu"),
+        map_location=torch.device(device),
     )
     model.load_state_dict(state["model"])
-    full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
+    if device == 'cpu':
+        full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
+    else:
+        full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1).cuda())
     full_model.eval()
     with torch.no_grad():
         trace = torch.jit.trace(
-            full_model, torch.rand(input_shape, dtype=torch.float32)
+            full_model, torch.rand(input_shape, dtype=torch.float32).to(device)
         )
-        trace.save(os.path.join(model_dir, "freezed_model{}.pt".format(part)))
+        if device == "cpu":
+            trace.save(os.path.join(model_dir, "freezed_model{}.pt".format(part)))
+        elif device == "cuda":
+            trace.save(os.path.join(model_dir, "freezed_cuda_model{}.pt".format(part)))
 
 
 def predict(data_path, part=0):
@@ -351,8 +357,7 @@ if __name__ == "__main__":
 
     if True:
         for i in range(1, 5):
-            save_inference_model((32, 1, 384, 384), 16, i)
-            
+            save_inference_model((32, 1, 384, 384), 16, i, device="cuda")
 
     if False:
         predict(dataset_path, part=0)

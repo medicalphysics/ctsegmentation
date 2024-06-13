@@ -36,6 +36,11 @@ public:
         torch::set_num_threads(std::max(nt, 1));
     }
 
+    void useCUDA(bool enable)
+    {
+        m_useCuda = torch::cuda::is_available() && enable;
+    }
+
     const std::array<std::int64_t, 2>& modelShape() const
     {
         return m_model_shape;
@@ -130,12 +135,15 @@ public:
                     in_acc[tz][0][ty][tx] = static_cast<float>(ct_raw[ctIdx]);
                     // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
                 }
+        if (m_useCuda) {
+            in.cuda();
+        }
         in.add_(float { 1024 });
         in.div_(float { 2048 });
         in.clamp_(float { 0 }, float { 1 });
         std::vector<torch::jit::IValue> inputs;
         inputs.push_back(in);
-        auto out = m_model.forward(inputs).toTensor();
+        auto out = m_model.forward(inputs).toTensor().cpu();
         auto out_acc = out.accessor<float, 4>();
         for (auto z = job.start[2]; z < job.stop[2]; ++z)
             for (std::int64_t c = 1; c < modelSize(); ++c)
@@ -195,13 +203,13 @@ protected:
         if (m_current_model != part) {
             std::string name;
             if (part == ModelPart::Model1)
-                name = "freezed_model1.pt";
+                name = m_useCuda ? "freezed_cuda_model1.pt" : "freezed_model1.pt";
             else if (part == ModelPart::Model2)
-                name = "freezed_model2.pt";
+                name = m_useCuda ? "freezed_cuda_model2.pt" : "freezed_model2.pt";
             else if (part == ModelPart::Model3)
-                name = "freezed_model3.pt";
+                name = m_useCuda ? "freezed_cuda_model3.pt" : "freezed_model3.pt";
             else if (part == ModelPart::Model4)
-                name = "freezed_model4.pt";
+                name = m_useCuda ? "freezed_cuda_model4.pt" : "freezed_model4.pt";
             try {
                 // Deserialize the ScriptModule from a file using torch::jit::load().
                 m_model = torch::jit::load(name);
@@ -220,6 +228,7 @@ private:
     torch::jit::script::Module m_model;
     ModelPart m_current_model = ModelPart::Empty;
     const std::array<std::int64_t, 2> m_model_shape = { 384, 384 };
+    bool m_useCuda = false;
 };
 
 }
