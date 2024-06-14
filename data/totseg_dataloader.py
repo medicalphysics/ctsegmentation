@@ -294,27 +294,35 @@ class TotSegDataset2D(Dataset):
                 f.writelines([",".join([str(dd) for dd in d]) + "\n" for d in data])
         return data
 
+
 if __name__ == "__main__":
     # d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, volumes = [10,11,12,13,14], batch_size=8)
     # d = TotSegDataset2D(r"/home/erlend/Totalsegmentator_dataset_v201/", train=False, batch_size=8)
     # d = TotSegDataset2D(r"D:\totseg\Totalsegmentator_dataset_v201", train=True, batch_size=4)
     # d = TotSegDataset2D(r"C:\Users\ander\totseg", train=False, volumes = [10,11,12,13,14], rewrite_labels=False, batch_size=8)
 
+    dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
+    dataset_path = r"C:\Users\ander\totseg"
+
     d1 = TotSegDataset2D(
-        r"D:\totseg\Totalsegmentator_dataset_v201",
+        dataset_path,
         train=False,
         volumes=None,
-        rewrite_labels=True,
+        rewrite_labels=False,
         batch_size=8,
     )
+    im, label = d1[0]
+    plt.imshow(im[0,0,:,:])
+    plt.show()
+
     d2 = TotSegDataset2D(
-        r"D:\totseg\Totalsegmentator_dataset_v201",
+        dataset_path,
         train=True,
         volumes=None,
-        rewrite_labels=True,
+        rewrite_labels=False,
         batch_size=8,
     )
-    d2.calculate_statistics()
+    #d2.calculate_statistics()
 
     # d._load_labels(os.path.join(r"D:\totseg\Totalsegmentator_dataset_v201", "s0001"))
     # d.prepare_labels()

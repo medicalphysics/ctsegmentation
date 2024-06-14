@@ -127,10 +127,10 @@ public:
         for (auto z = job.start[2]; z < job.stop[2]; ++z)
             for (auto y = job.start[1]; y < job.stop[2]; ++y)
                 for (auto x = job.start[0]; x < job.stop[0]; ++x) {
-                    const auto tx = x - job.start[0];
-                    const auto ty = y - job.start[1];
+                    const auto ty = x - job.start[0];
+                    const auto tx = y - job.start[1];
                     const auto tz = z - job.start[2];
-                    const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+                    const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + (dataShape[0] - 1 - x);
 
                     in_acc[tz][0][ty][tx] = static_cast<float>(ct_raw[ctIdx]);
                     // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
@@ -149,12 +149,12 @@ public:
             for (std::int64_t c = 1; c < modelSize(); ++c)
                 for (auto y = job.start[1]; y < job.stop[2]; ++y)
                     for (auto x = job.start[0]; x < job.stop[0]; ++x) {
-                        const auto tx = x - job.start[0];
-                        const auto ty = y - job.start[1];
+                        const auto ty = x - job.start[0];
+                        const auto tx = y - job.start[1];
                         const auto tz = z - job.start[2];
                         // if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
                         if (out_acc[tz][c][ty][tx] > 0.75f) {
-                            const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
+                            const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + (dataShape[0] - 1 - x);
                             org_out[ctIdx] = static_cast<std::uint8_t>(c + modelIndex * (modelSize() - 1));
                         }
                     }
