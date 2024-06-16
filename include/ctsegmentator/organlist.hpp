@@ -1,8 +1,11 @@
 
 #pragma once
+
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
+
 namespace ctsegmentator {
 static const std::map<std::uint8_t, std::string> organ_names = {
     { 1, "spleen" },
