@@ -16,6 +16,9 @@ int main()
     std::vector<std::uint8_t> org(N, 0);
     std::array<std::size_t, 3> shape = { 256, 256, 48 };
 
+    for (std::size_t i = 0; i < im.size(); ++i)
+        im[i] = i;
+
     auto jobs = s.segmentJobs(im, org, shape);
     s.useCUDA(true);
     for (const auto& job : jobs) {

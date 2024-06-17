@@ -12,6 +12,8 @@
 #include <string>
 #include <thread>
 
+#include <iostream>
+
 namespace ctsegmentator {
 
 enum class ModelPart {
@@ -125,15 +127,14 @@ public:
         m_model.eval();
         in.fill_(float { -1024 });
         for (auto z = job.start[2]; z < job.stop[2]; ++z)
-            for (auto y = job.start[1]; y < job.stop[2]; ++y)
+            for (auto y = job.start[1]; y < job.stop[1]; ++y)
                 for (auto x = job.start[0]; x < job.stop[0]; ++x) {
-                    const auto tx = x - job.start[0];
-                    const auto ty = y - job.start[1];
+                    const auto ty = x - job.start[0];
+                    const auto tx = job.stop[1] - 1 - (y - job.start[1]);
                     const auto tz = z - job.start[2];
                     const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
 
                     in_acc[tz][0][ty][tx] = static_cast<float>(ct_raw[ctIdx]);
-                    // in.index_put_({ tz, 0, ty, tx }, ct_in[ctIdx]);
                 }
         if (m_useCuda) {
             in.cuda();
@@ -141,24 +142,34 @@ public:
         in.add_(float { 1024 });
         in.div_(float { 2048 });
         in.clamp_(float { 0 }, float { 1 });
+
+        // saveTensor(in, "in.zip");
+
         std::vector<torch::jit::IValue> inputs;
         inputs.push_back(in);
         auto out = m_model.forward(inputs).toTensor().cpu();
         auto out_acc = out.accessor<float, 4>();
         for (auto z = job.start[2]; z < job.stop[2]; ++z)
             for (std::int64_t c = 1; c < modelSize(); ++c)
-                for (auto y = job.start[1]; y < job.stop[2]; ++y)
+                for (auto y = job.start[1]; y < job.stop[1]; ++y)
                     for (auto x = job.start[0]; x < job.stop[0]; ++x) {
-                        const auto tx = x - job.start[0];
-                        const auto ty = y - job.start[1];
+                        const auto ty = x - job.start[0];
+                        const auto tx = job.stop[1] - 1 - (y - job.start[1]);
                         const auto tz = z - job.start[2];
-                        // if (out.index({ tz, c, ty, tx }).item<float>() > 0.5f) {
-                        if (out_acc[tz][c][ty][tx] > 0.75f) {
+                        if (out_acc[tz][c][ty][tx] > 0.5f) {
                             const auto ctIdx = z * dataShape[0] * dataShape[1] + y * dataShape[0] + x;
                             org_out[ctIdx] = static_cast<std::uint8_t>(c + modelIndex * (modelSize() - 1));
                         }
                     }
         return success;
+    }
+
+    void saveTensor(const auto& t, const std::string& fname)
+    {
+        auto bytes = torch::jit::pickle_save(t);
+        std::ofstream fout(fname, std::ios::out | std::ios::binary);
+        fout.write(bytes.data(), bytes.size());
+        fout.close();
     }
 
 protected:
