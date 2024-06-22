@@ -90,3 +90,7 @@ if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
     endif()
 endif()
 
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model1.pt" DESTINATION bin)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model2.pt" DESTINATION bin)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model3.pt" DESTINATION bin)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model4.pt" DESTINATION bin)
