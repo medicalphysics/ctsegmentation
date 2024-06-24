@@ -62,15 +62,16 @@ if(BUILD_TESTING)
 endif()
 
 # Download models 
-SET(CTSEGMENTATOR_MODELS_DOWNLOAD ON CACHE BOOL "Download trained models from GitHub release for CT Segmentation.")
+SET(CTSEGMENTATOR_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data/models" CACHE PATH "Path to directory holding Torch models")
+
+if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
+    file(MAKE_DIRECTORY ${CTSEGMENTATOR_MODELS_DIR})
+endif()
+
+SET(CTSEGMENTATOR_MODELS_DOWNLOAD OFF CACHE BOOL "Download trained models from GitHub release for CT Segmentation.")
 if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
 
     MESSAGE(STATUS "Downloading Torch segmentation models.")
-    SET(CTSEGMENTATOR_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data/models" CACHE PATH "Path to directory holding Torch models")
-
-    if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
-        file(MAKE_DIRECTORY ${CTSEGMENTATOR_MODELS_DIR})
-    endif()
 
     # Creating directory if it do not exists
     if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
@@ -96,8 +97,8 @@ if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
 endif()
 
 # Install target model files
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model1.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model2.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model3.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model4.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CTSEGMENTATOR_MODELS_DIR}/freezed_model1.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CTSEGMENTATOR_MODELS_DIR}/freezed_model2.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CTSEGMENTATOR_MODELS_DIR}/freezed_model3.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CTSEGMENTATOR_MODELS_DIR}/freezed_model4.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
 
