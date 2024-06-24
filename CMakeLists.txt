@@ -26,8 +26,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 target_link_libraries(libctsegmentator INTERFACE "${TORCH_LIBRARIES}")
 
-message("${TORCH_LIBRARIES}")
-
 # Function to copy generated models to target binary directory
 # Dependency on models are handled by linking target to libdxmc
 function(copy_ctsegmentator_model_to_binary_dir func_target)
