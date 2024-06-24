@@ -40,6 +40,9 @@ function(copy_ctsegmentator_model_to_binary_dir func_target)
         endforeach()               
 endfunction()
 
+# Must use GNUInstallDirs to install libraries into correct
+# locations on all platforms.
+include(GNUInstallDirs)
 
 set(TORCH_INSTALL_PREFIX "${TORCH_INSTALL_PREFIX}" CACHE INTERNAL "")
 
@@ -50,6 +53,7 @@ function(copy_torch_binaries func_target)
                                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                                 ${TORCH_DLLS}
                                 $<TARGET_FILE_DIR:${func_target}>)
+                install(FILES ${TORCH_DLLS} DESTINATION ${CMAKE_INSTALL_BINDIR})
         endif (MSVC)
 endfunction()
 
@@ -82,4 +86,10 @@ if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
         FILE(DOWNLOAD "https://github.com/medicalphysics/ctsegmentation/releases/download/v0.1/freezed_model4.pt" "${CTSEGMENTATOR_MODELS_DIR}/freezed_model4.pt" SHOW_PROGRESS)
     endif()
 endif()
+
+# Install target model files
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model1.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model2.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model3.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/models/freezed_model4.pt" DESTINATION ${CMAKE_INSTALL_BINDIR})
 
