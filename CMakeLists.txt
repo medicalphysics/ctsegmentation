@@ -61,28 +61,35 @@ add_subdirectory(tests)
 
 
 # Download models 
-SET(CTSEGMENTATOR_MODELS_DOWNLOAD OFF CACHE BOOL "Download trained models from GitHub release for CT Segmentation.")
+SET(CTSEGMENTATOR_MODELS_DOWNLOAD ON CACHE BOOL "Download trained models from GitHub release for CT Segmentation.")
 if(${CTSEGMENTATOR_MODELS_DOWNLOAD})
+
+    MESSAGE(STATUS "Downloading Torch segmentation models.")
     SET(CTSEGMENTATOR_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data/models" CACHE PATH "Path to directory holding Torch models")
+
+    if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
+        file(MAKE_DIRECTORY ${CTSEGMENTATOR_MODELS_DIR})
+    endif()
+
     # Creating directory if it do not exists
     if(NOT EXISTS ${CTSEGMENTATOR_MODELS_DIR})
         file(MAKE_DIRECTORY ${CTSEGMENTATOR_MODELS_DIR})
     endif()
 
     if(NOT EXISTS "${CTSEGMENTATOR_MODELS_DIR}/freezed_model1.pt")
-        MESSAGE("Downloading freezed_model1.pt")
+        MESSAGE(STATUS "Downloading freezed_model1.pt")
         FILE(DOWNLOAD "https://github.com/medicalphysics/ctsegmentation/releases/download/v0.1/freezed_model1.pt" "${CTSEGMENTATOR_MODELS_DIR}/freezed_model1.pt" SHOW_PROGRESS)
     endif()
     if(NOT EXISTS "${CTSEGMENTATOR_MODELS_DIR}/freezed_model2.pt")
-        MESSAGE("Downloading freezed_model2.pt")
+        MESSAGE(STATUS "Downloading freezed_model2.pt")
         FILE(DOWNLOAD "https://github.com/medicalphysics/ctsegmentation/releases/download/v0.1/freezed_model2.pt" "${CTSEGMENTATOR_MODELS_DIR}/freezed_model2.pt" SHOW_PROGRESS)
     endif()
     if(NOT EXISTS "${CTSEGMENTATOR_MODELS_DIR}/freezed_model3.pt")
-        MESSAGE("Downloading freezed_model3.pt")
+        MESSAGE(STATUS "Downloading freezed_model3.pt")
         FILE(DOWNLOAD "https://github.com/medicalphysics/ctsegmentation/releases/download/v0.1/freezed_model3.pt" "${CTSEGMENTATOR_MODELS_DIR}/freezed_model3.pt" SHOW_PROGRESS)
     endif()
     if(NOT EXISTS "${CTSEGMENTATOR_MODELS_DIR}/freezed_model4.pt")
-        MESSAGE("Downloading freezed_model4.pt")
+        MESSAGE(STATUS "Downloading freezed_model4.pt")
         FILE(DOWNLOAD "https://github.com/medicalphysics/ctsegmentation/releases/download/v0.1/freezed_model4.pt" "${CTSEGMENTATOR_MODELS_DIR}/freezed_model4.pt" SHOW_PROGRESS)
     endif()
 endif()

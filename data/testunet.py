@@ -161,8 +161,8 @@ def start_train(
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
         {"label_smoothing": 1e-5},
-        weight_ce=0.2,
-        weight_dice=1.8,
+        weight_ce=1.0,
+        weight_dice=1.0,
         ignore_label=None,
     ).to(device)
 
@@ -223,7 +223,7 @@ def save_inference_model(input_shape, out_channel_size=16, part=1, device="cpu")
         map_location=torch.device(device),
     )
     model.load_state_dict(state["model"])
-    if device == 'cpu':
+    if device == "cpu":
         full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1))
     else:
         full_model = torch.nn.Sequential(model, torch.nn.Softmax(dim=1).cuda())
@@ -333,16 +333,16 @@ if __name__ == "__main__":
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 12
 
-    # start_train(
-    #    n_epochs=150,
-    #    device="cuda",
-    #    batch_size=batch_size,
-    #    part=1,
-    #    train_shape=(384, 384),
-    #    load_model=True,
-    #    load_only_model=False,
-    #    data_path=dataset_path,
-    # )
+    start_train(
+        n_epochs=150,
+        device="cuda",
+        batch_size=batch_size,
+        part=1,
+        train_shape=(384, 384),
+        load_model=True,
+        load_only_model=False,
+        data_path=dataset_path,
+    )
     # for part in range(1, 5):
     #     start_train(
     #         n_epochs=5,
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     #         data_path=dataset_path,
     #     )
 
-    if True:
+    if False:
         for i in range(1, 5):
             save_inference_model((32, 1, 384, 384), 16, i, device="cpu")
 
