@@ -221,7 +221,7 @@ def start_train(
 
 def save_inference_model(input_shape, out_channel_size=16, part=1, device="cpu"):
     model_dir = os.path.join(os.path.dirname(__file__), "models")
-    model_path = os.path.join(model_dir, "model{}.pt".format(part))
+    model_path = os.path.join(model_dir, "best_model{}.pt".format(part))
     model = get_model(out_channel_size).to(device)
     state = torch.load(
         model_path,
