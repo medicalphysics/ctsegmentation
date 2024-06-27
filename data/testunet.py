@@ -1,5 +1,6 @@
 from math import inf
 import os
+import shutil
 import numpy as np
 import torch
 import torch.distributed
@@ -125,6 +126,7 @@ def start_train(
         volumes = list(range(46, 61))
         name = "model4.pt"
     model_path = os.path.join(model_dir, name)
+    best_model_path = os.path.join(model_dir, "best_" + name)
 
     dataset_val = TotSegDataset2D(
         data_path,
@@ -194,21 +196,23 @@ def start_train(
         lr_rate.append(sheduler.get_last_lr()[0])
         validation_loss.append(lossv)
         dice_score.append(dicev)
+        state = {
+            "epoch": ind,
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "sheduler": sheduler.state_dict(),
+            "validation_loss": validation_loss,
+            "dice_score": dice_score,
+            "lr_rate": lr_rate,
+        }
+        torch.save(state, model_path)
         if min_val_loss > lossv or dicev > max_dice_score:
             if min_val_loss > lossv:
                 min_val_loss = lossv
             if dicev > max_dice_score:
                 max_dice_score = dicev
-            state = {
-                "epoch": ind,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "sheduler": sheduler.state_dict(),
-                "validation_loss": validation_loss,
-                "dice_score": dice_score,
-                "lr_rate": lr_rate,
-            }
-            torch.save(state, model_path)
+            shutil.copy(model_path, best_model_path)
+
         plot_loss(
             validation_loss,
             lr_rate,
@@ -338,16 +342,16 @@ if __name__ == "__main__":
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 12
 
-    # start_train(
-    #    n_epochs=150,
-    #    device="cuda",
-    #    batch_size=batch_size,
-    #    part=1,
-    #    train_shape=(384, 384),
-    #    load_model=True,
-    #    load_only_model=False,
-    #    data_path=dataset_path,
-    # )
+    start_train(
+        n_epochs=150,
+        device="cuda",
+        batch_size=batch_size,
+        part=1,
+        train_shape=(384, 384),
+        load_model=True,
+        load_only_model=False,
+        data_path=dataset_path,
+    )
     # for part in range(1, 5):
     #     start_train(
     #         n_epochs=5,
@@ -360,7 +364,7 @@ if __name__ == "__main__":
     #         data_path=dataset_path,
     #     )
 
-    if True:
+    if False:
         for i in range(1, 5):
             save_inference_model((32, 1, 384, 384), 16, i, device="cpu")
 
