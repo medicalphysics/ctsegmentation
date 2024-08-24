@@ -342,31 +342,23 @@ if __name__ == "__main__":
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 12
 
-    start_train(
-        n_epochs=150,
-        device="cuda",
-        batch_size=batch_size,
-        part=1,
-        train_shape=(384, 384),
-        load_model=True,
-        load_only_model=False,
-        data_path=dataset_path,
-    )
-    # for part in range(1, 5):
-    #     start_train(
-    #         n_epochs=5,
-    #         device="cuda",
-    #         batch_size=batch_size,
-    #         part=part,
-    #         train_shape=(384, 384),
-    #         load_model=True,
-    #         load_only_model=False,
-    #         data_path=dataset_path,
-    #     )
-
     if False:
+        for part in range(4, 5):
+            start_train(
+                n_epochs=10,
+                device="cuda",
+                batch_size=batch_size,
+                part=part,
+                train_shape=(384, 384),
+                load_model=True,
+                load_only_model=False,
+                data_path=dataset_path,
+            )
+
+    if True:
         for i in range(1, 5):
             save_inference_model((32, 1, 384, 384), 16, i, device="cpu")
+            save_inference_model((32, 1, 384, 384), 16, i, device="cuda")
 
     if False:
         predict(dataset_path, part=0)
