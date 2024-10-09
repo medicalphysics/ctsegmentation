@@ -158,7 +158,13 @@ def start_train(
         nesterov=True,
     )
     sheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=2, cooldown=3, factor=0.2, threshold=0.00
+        optimizer,
+        "min",
+        patience=2,
+        cooldown=3,
+        factor=0.2,
+        threshold=0.00,
+        min_lr=0.001,
     )
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
@@ -342,10 +348,10 @@ if __name__ == "__main__":
     dataset_path = r"D:\totseg\Totalsegmentator_dataset_v201"
     batch_size = 12
 
-    if False:
-        for part in range(4, 5):
+    if True:
+        for part in range(1, 2):
             start_train(
-                n_epochs=10,
+                n_epochs=40,
                 device="cuda",
                 batch_size=batch_size,
                 part=part,
