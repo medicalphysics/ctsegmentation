@@ -148,7 +148,7 @@ def start_train(
 
     model = get_model(dataset._label_tensor_dim).to(device)
 
-    initial_lr = 0.01
+    initial_lr = 0.002
     weight_decay = 3e-5
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -162,9 +162,9 @@ def start_train(
         "min",
         patience=2,
         cooldown=3,
-        factor=0.2,
+        factor=0.4,
         threshold=0.00,
-        min_lr=0.001,
+        min_lr=0.0002,
     )
     loss = DC_and_CE_loss(
         {"batch_dice": False, "smooth": 1e-5, "do_bg": False},
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     if True:
         for i in range(1, 5):
             save_inference_model((32, 1, 384, 384), 16, i, device="cpu")
-            save_inference_model((32, 1, 384, 384), 16, i, device="cuda")
+            # save_inference_model((32, 1, 384, 384), 16, i, device="cuda")
 
     if False:
         predict(dataset_path, part=0)
